@@ -13,7 +13,7 @@ from backend.app.models.knowledge import (
     Recommendation,
     UserNote,
 )
-from backend.app.models.learning import Lesson, Topic, TopicDependency
+from backend.app.models.learning import Lesson, Topic, TopicDependency, UserLessonProgress
 from backend.app.models.practice import Question, QuestionAttempt
 from backend.app.models.simulation import Simulation, SimulationEvent
 from backend.app.models.skill import Achievement, Skill, UserAchievement, UserSkill
@@ -27,6 +27,7 @@ __all__ = [
     "Topic",
     "TopicDependency",
     "Lesson",
+    "UserLessonProgress",
     "Question",
     "QuestionAttempt",
     "Design",

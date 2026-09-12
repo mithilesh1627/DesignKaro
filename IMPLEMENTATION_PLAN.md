@@ -166,8 +166,11 @@ DesignKaro/
   - JWT Authentication (`/register`, `/login`, `/refresh`, `/me`) with bcrypt password hashing.
   - Database initialization and seeding script (`init_db.py`).
   - Client authentication store (`authStore.ts`), interactive modal (`AuthModal.tsx`), and Navigation session bar.
-- [ ] **PHASE 3 — LEARNING ENGINE**
-  - Structured paths (Beginner, Intermediate, Advanced) covering 30+ concepts with visual breakdowns, trade-offs, and mini-exercises.
+- [x] **PHASE 3 — LEARNING ENGINE**
+  - Structured paths (Beginner, Intermediate, Advanced & ML) covering 30+ concepts with visual breakdowns, trade-offs, and mini-exercises.
+  - 10-dimension lesson architecture: Explanation, Visual Diagram, Real-world Case, Trade-offs, Common Pitfalls, Interview Defense, and Outage Post-mortems.
+  - Endpoints: `GET /api/v1/topics`, `GET /api/v1/topics/{id_or_slug}`, `GET /api/v1/lessons/{id_or_slug}`, `POST /api/v1/lessons/{id}/complete`, `GET /api/v1/learning/progress`.
+  - Rich interactive frontend curriculum catalog and dynamic lesson reader (`/learn/[slug]`) with interactive calculation checks.
 - [ ] **PHASE 4 — PRACTICE ENGINE**
   - 50+ real-world problems with progressive constraints, prerequisite gates, and evaluation criteria.
 - [ ] **PHASE 5 — ARCHITECTURE CANVAS**

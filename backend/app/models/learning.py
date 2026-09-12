@@ -1,3 +1,4 @@
+import datetime
 import uuid
 from typing import TYPE_CHECKING
 
@@ -63,3 +64,21 @@ class Lesson(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     questions: Mapped[list["Question"]] = relationship(
         "Question", back_populates="lesson", cascade="all, delete-orphan"
     )
+    progress_records: Mapped[list["UserLessonProgress"]] = relationship(
+        "UserLessonProgress", back_populates="lesson", cascade="all, delete-orphan"
+    )
+
+
+class UserLessonProgress(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "user_lesson_progress"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    lesson_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("lessons.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    is_completed: Mapped[bool] = mapped_column(default=False, nullable=False)
+    completed_at: Mapped[datetime.datetime | None] = mapped_column(nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Relationships
+    lesson: Mapped["Lesson"] = relationship("Lesson", back_populates="progress_records")

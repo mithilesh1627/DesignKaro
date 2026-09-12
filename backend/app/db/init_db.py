@@ -3,11 +3,13 @@ import logging
 
 from backend.app.core.database import AsyncSessionLocal, engine
 from backend.app.core.security import get_password_hash
+from backend.app.db.seed import LESSONS_SEED_DATA
 from backend.app.models import (
     Achievement,
     Base,
     Design,
     DesignVersion,
+    Lesson,
     Question,
     Skill,
     Topic,
@@ -198,6 +200,7 @@ async def init_db():
                     "Cpu",
                 ),
             ]
+            topic_map = {}
             for slug, title, desc, track, order, icon in topics_data:
                 top = Topic(
                     slug=slug,
@@ -208,6 +211,23 @@ async def init_db():
                     icon=icon,
                 )
                 session.add(top)
+                topic_map[slug] = top
+
+            await session.flush()
+
+            # Seed Detailed 10-Dimension Lessons
+            for item in LESSONS_SEED_DATA:
+                t_slug = item["topic_slug"]
+                if t_slug in topic_map:
+                    lesson_obj = Lesson(
+                        topic_id=topic_map[t_slug].id,
+                        slug=item["slug"],
+                        title=item["title"],
+                        content_markdown=item["content_markdown"],
+                        estimated_minutes=item["estimated_minutes"],
+                        order_index=item["order_index"],
+                    )
+                    session.add(lesson_obj)
 
             # 5. Core Practice Problem
             sample_question = Question(
@@ -279,7 +299,30 @@ async def init_db():
             await session.commit()
             logger.info("Database seeding complete!")
         else:
-            logger.info("Demo user already exists. Skipping seed.")
+            # Check if lessons need to be seeded
+            from sqlalchemy import func
+
+            lesson_count = (await session.execute(select(func.count(Lesson.id)))).scalar() or 0
+            if lesson_count == 0:
+                logger.info("Seeding missing lessons...")
+                topic_res = await session.execute(select(Topic))
+                topic_map = {t.slug: t for t in topic_res.scalars().all()}
+                for item in LESSONS_SEED_DATA:
+                    t_slug = item["topic_slug"]
+                    if t_slug in topic_map:
+                        lesson_obj = Lesson(
+                            topic_id=topic_map[t_slug].id,
+                            slug=item["slug"],
+                            title=item["title"],
+                            content_markdown=item["content_markdown"],
+                            estimated_minutes=item["estimated_minutes"],
+                            order_index=item["order_index"],
+                        )
+                        session.add(lesson_obj)
+                await session.commit()
+                logger.info("Lessons seeded successfully!")
+            else:
+                logger.info("Demo user and lessons already exist. Skipping seed.")
 
 
 if __name__ == "__main__":
