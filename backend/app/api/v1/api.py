@@ -1,13 +1,11 @@
-from backend.app.api.v1.endpoints import health
+from backend.app.api.v1.endpoints import auth, health
 from fastapi import APIRouter
 
 api_router = APIRouter()
 
 # Core system endpoints
 api_router.include_router(health.router, tags=["Health & System Telemetry"])
-
-# Placeholder routers for subsequent phases (Modular Monolith)
-# api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
+api_router.include_router(auth.router, prefix="/auth", tags=["Authentication & Profiles"])
 # api_router.include_router(topics.router, prefix="/topics", tags=["Learning"])
 # api_router.include_router(problems.router, prefix="/problems", tags=["Practice"])
 # api_router.include_router(designs.router, prefix="/designs", tags=["Architecture Canvas"])

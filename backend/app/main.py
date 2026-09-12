@@ -9,23 +9,17 @@ from backend.app.core.config import settings
 from backend.app.core.redis import redis_manager
 
 # Configure structured logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("designkaro")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info(
-        f"Starting {settings.PROJECT_NAME} v{settings.VERSION} [{settings.ENVIRONMENT}]"
-    )
+    logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION} [{settings.ENVIRONMENT}]")
     logger.info(f"Tagline: {settings.TAGLINE}")
     # Verify Redis connectivity in background
     redis_ok = await redis_manager.check_health()
-    logger.info(
-        f"Initial Redis status: {'CONNECTED' if redis_ok else 'UNAVAILABLE (will retry on demand)'}"
-    )
+    logger.info(f"Initial Redis status: {'CONNECTED' if redis_ok else 'UNAVAILABLE (will retry on demand)'}")
     yield
     logger.info(f"Shutting down {settings.PROJECT_NAME}...")
     await redis_manager.close()

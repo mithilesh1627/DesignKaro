@@ -15,8 +15,12 @@ import {
   Menu,
   X,
   Compass,
+  User as UserIcon,
+  LogOut,
 } from "lucide-react";
 import { HealthBadge } from "./HealthBadge";
+import { AuthModal } from "./AuthModal";
+import { useAuthStore } from "@/lib/authStore";
 
 interface NavItem {
   label: string;
@@ -43,6 +47,8 @@ interface NavigationProps {
 export const Navigation: React.FC<NavigationProps> = ({ onOpenDiagnostic }) => {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const { user, isAuthenticated, logout } = useAuthStore();
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-slate-800/80 bg-surface-950/90 backdrop-blur-md">
@@ -97,8 +103,38 @@ export const Navigation: React.FC<NavigationProps> = ({ onOpenDiagnostic }) => {
         </nav>
 
         {/* Right Action & Telemetry */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <HealthBadge />
+
+          {/* User Session or Sign In */}
+          {isAuthenticated && user ? (
+            <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-lg border border-slate-800 bg-slate-900/80 text-xs font-mono">
+              <div className="flex items-center gap-1.5 text-sky-400">
+                <UserIcon className="h-3.5 w-3.5" />
+                <span className="font-semibold text-white">
+                  {user.profile?.username || user.email.split("@")[0]}
+                </span>
+              </div>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-500/10 text-sky-300 border border-sky-500/20">
+                {user.profile?.current_rank?.split(" ")[0] || "Architect"}
+              </span>
+              <button
+                onClick={logout}
+                title="Log Out"
+                className="text-slate-400 hover:text-rose-400 p-0.5 transition-colors"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setAuthModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 px-3 py-1.5 text-xs font-mono text-slate-200 transition-colors shadow-sm"
+            >
+              <UserIcon className="h-3.5 w-3.5 text-sky-400" />
+              <span>Sign In</span>
+            </button>
+          )}
 
           {onOpenDiagnostic && (
             <button
@@ -120,6 +156,12 @@ export const Navigation: React.FC<NavigationProps> = ({ onOpenDiagnostic }) => {
           </button>
         </div>
       </div>
+
+      {/* Auth Modal */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+      />
 
       {/* Mobile Navigation Drawer */}
       {mobileOpen && (

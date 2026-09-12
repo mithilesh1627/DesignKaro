@@ -155,14 +155,17 @@ DesignKaro/
 ## 4. Master 24-Phase Implementation Roadmap
 
 - [x] **Repository Inspection & Pre-flight Diagnostics** (Clean conda environment, Node v22, Git initialized)
-- [ ] **PHASE 1 — FOUNDATION & SKELETON** *(Current Active Phase)*
+- [x] **PHASE 1 — FOUNDATION & SKELETON**
   - Monorepo structure, Docker Compose, Next.js frontend, FastAPI backend, PostgreSQL & Redis configs.
   - Health (`/health`) and Readiness (`/ready`) endpoints.
   - Modern technical landing page and navigation shell ("GitHub + LeetCode + Figma" aesthetics).
   - CI workflow skeleton (`.github/workflows/ci.yml`), development documentation, ADR-001 through ADR-007.
-- [ ] **PHASE 2 — AUTH + DATABASE SCHEMA & MIGRATIONS**
-  - SQLAlchemy 2.0 models: `User`, `UserProfile`, `Design`, `DesignVersion`, `Topic`, `Lesson`, `Skill`, etc.
-  - JWT auth (Access + Refresh tokens), password hashing with bcrypt, seed data script.
+- [x] **PHASE 2 — AUTH + DATABASE SCHEMA & MIGRATIONS**
+  - Complete 26 SQLAlchemy 2.0 ORM models with UUIDs, timestamps, and relational integrity.
+  - Alembic async migration configuration and baseline migration (`4f40378c57d8`).
+  - JWT Authentication (`/register`, `/login`, `/refresh`, `/me`) with bcrypt password hashing.
+  - Database initialization and seeding script (`init_db.py`).
+  - Client authentication store (`authStore.ts`), interactive modal (`AuthModal.tsx`), and Navigation session bar.
 - [ ] **PHASE 3 — LEARNING ENGINE**
   - Structured paths (Beginner, Intermediate, Advanced) covering 30+ concepts with visual breakdowns, trade-offs, and mini-exercises.
 - [ ] **PHASE 4 — PRACTICE ENGINE**

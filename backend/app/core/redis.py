@@ -13,9 +13,7 @@ class RedisManager:
 
     async def get_client(self) -> aioredis.Redis:
         if self._client is None:
-            self._client = aioredis.from_url(
-                self.url, encoding="utf-8", decode_responses=True, socket_timeout=2.0
-            )
+            self._client = aioredis.from_url(self.url, encoding="utf-8", decode_responses=True, socket_timeout=2.0)
         return self._client
 
     async def check_health(self) -> bool:
