@@ -1,4 +1,4 @@
-from backend.app.api.v1.endpoints import auth, health, learning, problems
+from backend.app.api.v1.endpoints import auth, designs, health, learning, problems
 from fastapi import APIRouter
 
 api_router = APIRouter()
@@ -8,7 +8,7 @@ api_router.include_router(health.router, tags=["Health & System Telemetry"])
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication & Profiles"])
 api_router.include_router(learning.router, tags=["Learning Engine"])
 api_router.include_router(problems.router, prefix="/problems", tags=["Practice Engine"])
-# api_router.include_router(designs.router, prefix="/designs", tags=["Architecture Canvas"])
+api_router.include_router(designs.router, prefix="/designs", tags=["Architecture Canvas & Validation"])
 # api_router.include_router(mentor.router, prefix="/mentor", tags=["AI Mentor"])
 # api_router.include_router(interviews.router, prefix="/interviews", tags=["Interview"])
 # api_router.include_router(simulations.router, prefix="/simulations", tags=["Simulation"])
