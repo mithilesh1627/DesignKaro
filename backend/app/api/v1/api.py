@@ -1,14 +1,17 @@
 from backend.app.api.v1.endpoints import (
     auth,
     capacity,
+    dashboard,
     designs,
     health,
     interviews,
+    knowledge,
     learning,
     mentor,
     problems,
     review,
     simulations,
+    versions,
 )
 from fastapi import APIRouter
 
@@ -25,3 +28,6 @@ api_router.include_router(mentor.router, prefix="/mentor", tags=["AI Senior Engi
 api_router.include_router(review.router, prefix="/review", tags=["Architecture Review (9 Dimensions)"])
 api_router.include_router(interviews.router, prefix="/interviews", tags=["Interview Engine"])
 api_router.include_router(simulations.router, prefix="/simulations", tags=["Traffic & Chaos Simulation"])
+api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Developer Mastery & Skill Graph"])
+api_router.include_router(knowledge.router, prefix="/knowledge", tags=["Architecture Knowledge Base & RAG"])
+api_router.include_router(versions.router, prefix="/designs", tags=["Architecture Versioning & Diffing"])

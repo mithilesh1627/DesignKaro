@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api.v1.api import api_router
 from backend.app.core.config import settings
+from backend.app.core.middleware import SecurityHeadersMiddleware, TelemetryMiddleware
 from backend.app.core.redis import redis_manager
 
 # Configure structured logging
@@ -38,6 +39,12 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan,
 )
+
+# Security Headers Middleware
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Telemetry & Request Timing Middleware
+app.add_middleware(TelemetryMiddleware)
 
 # CORS Middleware
 app.add_middleware(

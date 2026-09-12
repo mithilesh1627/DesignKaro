@@ -49,3 +49,20 @@ async def test_root_index(client):
     data = response.json()
     assert data["app"] == "DesignKaro"
     assert data["docs"] == "/docs"
+
+
+@pytest.mark.asyncio
+async def test_security_headers_and_process_time(client):
+    response = await client.get("/health")
+    assert response.status_code == 200
+    assert response.headers.get("X-Content-Type-Options") == "nosniff"
+    assert response.headers.get("X-Frame-Options") == "DENY"
+    assert "X-Process-Time" in response.headers
+
+
+@pytest.mark.asyncio
+async def test_prometheus_metrics_format(client):
+    response = await client.get("/api/v1/metrics?format=prometheus")
+    assert response.status_code == 200
+    assert "text/plain" in response.headers.get("content-type", "")
+    assert "designkaro_http_requests_total" in response.text

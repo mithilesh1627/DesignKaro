@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN useradd -m -u 1000 appuser
 
 COPY --from=builder /root/.local /home/appuser/.local
-COPY --chown=appuser:appuser . /app
+COPY --chown=appuser:appuser . /app/backend
 
 ENV PATH=/home/appuser/.local/bin:$PATH
 ENV PYTHONPATH=/app

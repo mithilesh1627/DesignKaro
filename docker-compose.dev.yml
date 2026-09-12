@@ -37,7 +37,7 @@ services:
       - SECRET_KEY=dev-secret-key-designkaro
       - BACKEND_CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
     volumes:
-      - ./backend:/app
+      - ./backend:/app/backend
     ports:
       - "8000:8000"
     depends_on:

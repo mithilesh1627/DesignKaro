@@ -155,7 +155,7 @@ const TEMPLATES: Record<string, { title: string; nodes: Node[]; edges: Edge[] }>
   },
 };
 
-export default function DesignCanvasPage() {
+function DesignCanvasContent() {
   const searchParams = useSearchParams();
   const problemSlug = searchParams.get("problem");
   const problemTitle = searchParams.get("title");
@@ -666,5 +666,19 @@ export default function DesignCanvasPage() {
       </div>
       <Footer />
     </>
+  );
+}
+
+export default function DesignCanvasPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="min-h-screen bg-surface-950 flex items-center justify-center text-xs font-mono text-slate-400">
+          Loading Design Canvas...
+        </div>
+      }
+    >
+      <DesignCanvasContent />
+    </React.Suspense>
   );
 }

@@ -2,9 +2,10 @@ import datetime
 
 from backend.app.core.config import settings
 from backend.app.core.database import engine
+from backend.app.core.middleware import telemetry
 from backend.app.core.redis import redis_manager
 from fastapi import APIRouter, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlalchemy import text
 
 router = APIRouter()
@@ -72,14 +73,22 @@ async def readiness_check():
     )
 
 
-@router.get("/metrics", summary="Telemetry & metrics summary")
-async def metrics_summary():
+@router.get("/metrics", summary="Telemetry & Prometheus metrics summary")
+async def metrics_summary(format: str | None = None):
     """
-    Exposes essential application telemetry and metadata.
+    Exposes essential application telemetry and Prometheus-compatible metrics.
     """
+    if format == "prometheus":
+        return PlainTextResponse(
+            content=telemetry.get_prometheus_format(),
+            media_type="text/plain; version=0.0.4",
+        )
+
+    summary = telemetry.get_summary()
     return {
         "service": settings.PROJECT_NAME,
+        "version": settings.VERSION,
         "uptime": "active",
         "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
-        "version": settings.VERSION,
+        "telemetry": summary,
     }
