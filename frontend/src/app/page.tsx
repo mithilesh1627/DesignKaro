@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import {
   Layers,
@@ -10,7 +10,7 @@ import {
   Server,
   Zap,
   ArrowRight,
-  ArrowLeft,
+  ArrowDown,
   X,
   Play,
   Pause,
@@ -18,83 +18,124 @@ import {
   Cpu,
   ShieldCheck,
   CheckCircle2,
+  Sparkles,
+  RotateCcw,
+  Activity,
+  Box,
+  Terminal,
+  ChevronRight,
 } from "lucide-react";
 import { AuthModal } from "@/components/AuthModal";
 import { useAuthStore } from "@/lib/authStore";
 
+interface ArchNode {
+  id: string;
+  relX: number;
+  relY: number;
+  label: string;
+  type: string;
+  color: string;
+  sublabel: string;
+  telemetry: string;
+}
+
+interface Packet {
+  edgeIndex: number;
+  progress: number;
+  speed: number;
+  color: string;
+  size: number;
+}
+
+interface Ripple {
+  x: number;
+  y: number;
+  radius: number;
+  maxRadius: number;
+  opacity: number;
+}
+
+interface ArchContext {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  telemetry: string;
+  packetColors: string[];
+  speedMultiplier: number;
+  activeEdges: number[];
+}
+
 export default function LandingPage() {
-  const [currentFoldIndex, setCurrentFoldIndex] = useState(0);
-  const [previousFoldIndex, setPreviousFoldIndex] = useState(0);
-  const [directionForward, setDirectionForward] = useState(true);
-
-  // Diagnostic 3D Card flip state
-  const [isFlipped, setIsFlipped] = useState(false);
-
-  // Traffic simulation inside Fold 2
-  const [isSimulating, setIsSimulating] = useState(true);
-  const [qps, setQps] = useState(24453);
-
-  // AI Socratic drawer state in Fold 2
-  const [drawerOpen, setDrawerOpen] = useState(false);
-
-  // Auth Modal state
+  // Auth Store
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const { user, isAuthenticated, logout } = useAuthStore();
 
+  // Traffic simulation inside Simulation Arena Section
+  const [isSimulating, setIsSimulating] = useState(true);
+  const [qps, setQps] = useState(24453);
+
+  // AI Socratic drawer state in Simulation Arena
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Active Architectural Context for the Canvas Animation
+  const [activeContext, setActiveContext] = useState<string>("global");
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const mousePosRef = useRef<{ x: number; y: number }>({ x: -1000, y: -1000 });
+  const ripplesRef = useRef<Ripple[]>([]);
 
-  const totalFolds = 3;
+  // Architectural Context Definitions
+  const contexts: ArchContext[] = useMemo(
+    () => [
+      {
+        id: "global",
+        name: "Global Distributed Mesh",
+        icon: "🌐",
+        description: "Multi-region active-active topology with edge caching and read replicas",
+        telemetry: "280,000 QPS • p99 Latency: 4.2ms • 99.999% SLA",
+        packetColors: ["#38bdf8", "#06b6d4", "#818cf8"],
+        speedMultiplier: 1.0,
+        activeEdges: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+      },
+      {
+        id: "flashsale",
+        name: "Flash Sale Traffic Surge",
+        icon: "⚡",
+        description: "10x QPS spike absorbed by Redis cache shields and Kafka backpressure",
+        telemetry: "1,450,000 QPS • Redis Hit: 99.6% • Kafka: 2.8M msg/s",
+        packetColors: ["#f43f5e", "#f59e0b", "#fbbf24"],
+        speedMultiplier: 2.4,
+        activeEdges: [0, 1, 2, 3, 4, 5, 6, 7, 10],
+      },
+      {
+        id: "eventstream",
+        name: "Kafka Event-Driven Fanout",
+        icon: "📡",
+        description: "Real-time pub/sub event stream with idempotent worker consumer groups",
+        telemetry: "4,200,000 Events/sec • Partition Count: 64 • 0ms Lag",
+        packetColors: ["#f59e0b", "#10b981", "#818cf8"],
+        speedMultiplier: 1.7,
+        activeEdges: [2, 4, 7, 10, 11],
+      },
+      {
+        id: "aisearch",
+        name: "AI & Vector Search",
+        icon: "🧠",
+        description: "High-dimensional embeddings retrieval with HNSW cosine similarity index",
+        telemetry: "Cosine Index: 1536-dim • Vector DB: 18ms p95 • Hybrid RAG",
+        packetColors: ["#c084fc", "#a855f7", "#38bdf8"],
+        speedMultiplier: 1.3,
+        activeEdges: [0, 2, 4, 6, 9],
+      },
+    ],
+    []
+  );
 
-  // Closed loop navigation
-  const switchFold = (targetIndex: number, forceForward?: boolean) => {
-    if (targetIndex === currentFoldIndex) return;
+  const activeContextData =
+    contexts.find((c) => c.id === activeContext) || contexts[0];
 
-    const prev = currentFoldIndex;
-    let forward = true;
-    if (forceForward !== undefined) {
-      forward = forceForward;
-    } else {
-      if (prev === 2 && targetIndex === 0) {
-        forward = true;
-      } else if (prev === 0 && targetIndex === 2) {
-        forward = false;
-      } else {
-        forward = targetIndex > prev;
-      }
-    }
-
-    setPreviousFoldIndex(prev);
-    setDirectionForward(forward);
-    setCurrentFoldIndex(targetIndex);
-  };
-
-  const navigateLoop = (step: number) => {
-    const nextIndex = (currentFoldIndex + step + totalFolds) % totalFolds;
-    switchFold(nextIndex, step > 0);
-  };
-
-  // Keyboard controls
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      ) {
-        return;
-      }
-      if (e.key === "ArrowRight" || e.key === "PageDown") {
-        e.preventDefault();
-        navigateLoop(1);
-      } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
-        e.preventDefault();
-        navigateLoop(-1);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [currentFoldIndex]);
-
-  // Traffic Simulation jitter
+  // Traffic Simulation jitter in Arena
   useEffect(() => {
     if (!isSimulating) return;
     const timer = setInterval(() => {
@@ -105,7 +146,7 @@ export default function LandingPage() {
     return () => clearInterval(timer);
   }, [isSimulating]);
 
-  // Kinetic Starfield Particle Canvas Animation
+  // Context-Aware Background Distributed Architecture Canvas Animation
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -123,33 +164,227 @@ export default function LandingPage() {
     };
     window.addEventListener("resize", handleResize);
 
+    // Distributed Architecture Network Nodes (Context-Aware)
+    const nodes: ArchNode[] = [
+      { id: "clients", relX: 0.09, relY: 0.28, label: "Edge Clients", type: "CLIENT", color: "#38bdf8", sublabel: "iOS / Web / IoT", telemetry: "240k QPS" },
+      { id: "cdn", relX: 0.22, relY: 0.18, label: "Cloudflare CDN", type: "CDN", color: "#0ea5e9", sublabel: "Anycast 94% Cache", telemetry: "p99 1.8ms" },
+      { id: "lb", relX: 0.18, relY: 0.68, label: "Global LB (Envoy)", type: "LB", color: "#06b6d4", sublabel: "Consistent Hash", telemetry: "Round-Robin" },
+      { id: "gw", relX: 0.32, relY: 0.38, label: "API Gateway", type: "GW", color: "#38bdf8", sublabel: "Rate Limiter", telemetry: "Token Bucket OK" },
+      { id: "authSvc", relX: 0.48, relY: 0.18, label: "Auth & Session", type: "SVC", color: "#818cf8", sublabel: "Go / gRPC", telemetry: "JWT Valid" },
+      { id: "orderSvc", relX: 0.50, relY: 0.52, label: "Core Microservices", type: "SVC", color: "#a855f7", sublabel: "Rust / Axum", telemetry: "Autoscale 32" },
+      { id: "redis", relX: 0.70, relY: 0.20, label: "Redis Cluster", type: "CACHE", color: "#f43f5e", sublabel: "In-Memory", telemetry: "99.4% Hit Rate" },
+      { id: "kafka", relX: 0.50, relY: 0.82, label: "Apache Kafka", type: "MQ", color: "#f59e0b", sublabel: "Event Bus", telemetry: "4.2M msg/sec" },
+      { id: "postgres", relX: 0.74, relY: 0.62, label: "PostgreSQL Master", type: "DB", color: "#3b82f6", sublabel: "Primary-Replica", telemetry: "WAL Synced" },
+      { id: "vector", relX: 0.88, relY: 0.32, label: "Vector Search DB", type: "VEC", color: "#c084fc", sublabel: "HNSW Embeddings", telemetry: "Cosine Sim 1536" },
+      { id: "s3", relX: 0.88, relY: 0.78, label: "Object Blob Storage", type: "S3", color: "#10b981", sublabel: "Multi-AZ S3", telemetry: "99.999999999%" },
+    ];
+
+    // Edges connecting architecture nodes
+    const edges: [number, number][] = [
+      [0, 1], // 0: clients -> cdn
+      [1, 2], // 1: cdn -> lb
+      [2, 3], // 2: lb -> gw
+      [3, 4], // 3: gw -> authSvc
+      [3, 5], // 4: gw -> orderSvc
+      [4, 6], // 5: authSvc -> redis
+      [5, 6], // 6: orderSvc -> redis
+      [5, 7], // 7: orderSvc -> kafka
+      [5, 8], // 8: orderSvc -> postgres
+      [5, 9], // 9: orderSvc -> vector
+      [7, 8], // 10: kafka -> postgres
+      [8, 10], // 11: postgres -> s3
+    ];
+
+    // Live Packets
+    const packetCount = 28;
+    const packets: Packet[] = [];
+    for (let i = 0; i < packetCount; i++) {
+      packets.push({
+        edgeIndex: Math.floor(Math.random() * edges.length),
+        progress: Math.random(),
+        speed: 0.003 + Math.random() * 0.005,
+        color: "#38bdf8",
+        size: 3 + Math.random() * 1.5,
+      });
+    }
+
+    // Starfield for deep ambient space
     const stars = Array.from({ length: 60 }, () => ({
       x: Math.random() * w,
       y: Math.random() * h,
-      radius: Math.random() * 1.4 + 0.3,
-      vx: (Math.random() - 0.5) * 0.25,
-      vy: (Math.random() - 0.5) * 0.25,
-      alpha: Math.random() * 0.7 + 0.2,
+      radius: Math.random() * 1.2 + 0.3,
+      alpha: Math.random() * 0.6 + 0.1,
     }));
+
+    let pulseTime = 0;
 
     function render() {
       if (!ctx) return;
       ctx.clearRect(0, 0, w, h);
-      for (const star of stars) {
-        star.x += star.vx;
-        star.y += star.vy;
-        if (star.x < 0) star.x = w;
-        if (star.x > w) star.x = 0;
-        if (star.y < 0) star.y = h;
-        if (star.y > h) star.y = 0;
+      pulseTime += 0.025;
 
+      const currentContext = contexts.find((c) => c.id === activeContext) || contexts[0];
+      const speedMult = currentContext.speedMultiplier;
+      const palette = currentContext.packetColors;
+      const activeEdgeSet = new Set(currentContext.activeEdges);
+
+      // 1. Draw Starfield
+      for (const star of stars) {
         ctx.beginPath();
         ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(56, 189, 248, ${star.alpha})`;
-        ctx.shadowBlur = 4;
-        ctx.shadowColor = "#06b6d4";
         ctx.fill();
       }
+
+      // 2. Draw Ripples (from user clicks)
+      const ripples = ripplesRef.current;
+      for (let i = ripples.length - 1; i >= 0; i--) {
+        const r = ripples[i];
+        r.radius += 5;
+        r.opacity = Math.max(0, 1 - r.radius / r.maxRadius);
+
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(56, 189, 248, ${r.opacity * 0.4})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        if (r.radius >= r.maxRadius) {
+          ripples.splice(i, 1);
+        }
+      }
+
+      // 3. Draw Network Edges (Circuit tracks)
+      for (let i = 0; i < edges.length; i++) {
+        const [fromIdx, toIdx] = edges[i];
+        const n1 = nodes[fromIdx];
+        const n2 = nodes[toIdx];
+
+        const x1 = n1.relX * w;
+        const y1 = n1.relY * h;
+        const x2 = n2.relX * w;
+        const y2 = n2.relY * h;
+
+        const isEdgeActiveInContext = activeEdgeSet.has(i);
+
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+
+        if (isEdgeActiveInContext) {
+          const grad = ctx.createLinearGradient(x1, y1, x2, y2);
+          grad.addColorStop(0, "rgba(56, 189, 248, 0.25)");
+          grad.addColorStop(0.5, "rgba(129, 140, 248, 0.4)");
+          grad.addColorStop(1, "rgba(6, 182, 212, 0.25)");
+          ctx.strokeStyle = grad;
+          ctx.lineWidth = 1.8;
+        } else {
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+          ctx.lineWidth = 1;
+        }
+        ctx.stroke();
+      }
+
+      // 4. Draw Moving Data Packets with Glowing Trails
+      for (const p of packets) {
+        // Adjust speed by context multiplier
+        p.progress += p.speed * speedMult;
+        if (p.progress > 1) {
+          p.progress = 0;
+          // Prefer active edges for this context
+          if (Math.random() < 0.85 && currentContext.activeEdges.length > 0) {
+            const rIdx = Math.floor(Math.random() * currentContext.activeEdges.length);
+            p.edgeIndex = currentContext.activeEdges[rIdx];
+          } else {
+            p.edgeIndex = Math.floor(Math.random() * edges.length);
+          }
+          p.color = palette[Math.floor(Math.random() * palette.length)];
+        }
+
+        const [fromIdx, toIdx] = edges[p.edgeIndex];
+        const n1 = nodes[fromIdx];
+        const n2 = nodes[toIdx];
+
+        const x1 = n1.relX * w;
+        const y1 = n1.relY * h;
+        const x2 = n2.relX * w;
+        const y2 = n2.relY * h;
+
+        const curX = x1 + (x2 - x1) * p.progress;
+        const curY = y1 + (y2 - y1) * p.progress;
+
+        // Packet Head
+        ctx.beginPath();
+        ctx.arc(curX, curY, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = p.color;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Packet Trail
+        const tailProg = Math.max(0, p.progress - 0.06);
+        const tailX = x1 + (x2 - x1) * tailProg;
+        const tailY = y1 + (y2 - y1) * tailProg;
+        ctx.beginPath();
+        ctx.moveTo(curX, curY);
+        ctx.lineTo(tailX, tailY);
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = p.size * 0.7;
+        ctx.stroke();
+      }
+
+      // 5. Draw Distributed Architecture Nodes
+      const mouse = mousePosRef.current;
+
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        const nx = node.relX * w;
+        const ny = node.relY * h;
+
+        const distToMouse = Math.hypot(mouse.x - nx, mouse.y - ny);
+        const isNear = distToMouse < 160;
+
+        // Ambient Aura
+        const baseRadius = isNear ? 18 : 13;
+        const pulse = Math.sin(pulseTime + i * 0.8) * 3;
+        const auraRadius = baseRadius + pulse;
+
+        ctx.beginPath();
+        ctx.arc(nx, ny, auraRadius, 0, Math.PI * 2);
+        ctx.fillStyle = isNear ? "rgba(56, 189, 248, 0.35)" : "rgba(6, 182, 212, 0.09)";
+        ctx.fill();
+
+        // Node Circle Core
+        ctx.beginPath();
+        ctx.arc(nx, ny, baseRadius - 4, 0, Math.PI * 2);
+        ctx.fillStyle = isNear ? "#0ea5e9" : "#0a1120";
+        ctx.strokeStyle = node.color;
+        ctx.lineWidth = 2;
+        ctx.shadowBlur = isNear ? 18 : 8;
+        ctx.shadowColor = node.color;
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Center Indicator
+        ctx.beginPath();
+        ctx.arc(nx, ny, 3, 0, Math.PI * 2);
+        ctx.fillStyle = "#ffffff";
+        ctx.fill();
+
+        // Labels & Live Telemetry HUD (visible on medium & larger displays)
+        if (w > 768) {
+          ctx.font = "bold 11px 'JetBrains Mono', monospace";
+          ctx.fillStyle = isNear ? "#ffffff" : "rgba(226, 232, 240, 0.85)";
+          ctx.fillText(node.label, nx + 18, ny - 4);
+
+          ctx.font = "9px 'JetBrains Mono', monospace";
+          ctx.fillStyle = isNear ? node.color : "rgba(148, 163, 184, 0.75)";
+          ctx.fillText(isNear ? `⚡ ${node.telemetry}` : node.sublabel, nx + 18, ny + 9);
+        }
+      }
+
       animFrameId = requestAnimationFrame(render);
     }
     render();
@@ -158,116 +393,98 @@ export default function LandingPage() {
       window.removeEventListener("resize", handleResize);
       cancelAnimationFrame(animFrameId);
     };
-  }, []);
+  }, [activeContext, contexts]);
 
-  const getFoldClass = (index: number) => {
-    if (index === currentFoldIndex) return "fold-active";
-    if (directionForward) {
-      return index === previousFoldIndex ? "fold-past" : "fold-future";
-    } else {
-      return index === previousFoldIndex ? "fold-future" : "fold-past";
-    }
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    mousePosRef.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handleCanvasMouseLeave = () => {
+    mousePosRef.current = { x: -1000, y: -1000 };
+  };
+
+  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    ripplesRef.current.push({
+      x: e.clientX,
+      y: e.clientY,
+      radius: 0,
+      maxRadius: 320,
+      opacity: 1,
+    });
   };
 
   return (
-    <div className="bg-tech-pattern text-slate-200 h-screen w-screen overflow-hidden select-none font-sans antialiased relative">
-      {/* Subtle Canvas Kinetic Starfield Particle Background */}
-      <canvas
-        ref={canvasRef}
-        className="fixed inset-0 pointer-events-none z-0 opacity-40"
-      />
-
-      {/* Ambient Energy Spheres */}
-      <div className="fixed top-[-15%] left-1/2 -translate-x-1/2 w-[1100px] h-[750px] bg-cyan-600/10 blur-[180px] rounded-full pointer-events-none -z-10" />
-      <div className="fixed top-[45%] right-[-12%] w-[700px] h-[700px] bg-indigo-600/10 blur-[190px] rounded-full pointer-events-none -z-10" />
-
-      {/* FIXED TOP HEADER */}
-      <header className="fixed top-0 inset-x-0 z-50 h-16 border-b border-white/[0.06] bg-brand-bg/90 backdrop-blur-2xl px-6 sm:px-8 flex items-center justify-between">
+    <div className="bg-[#050914] text-slate-200 min-h-screen w-full font-sans antialiased relative selection:bg-cyan-500 selection:text-slate-950">
+      {/* ==================== FIXED TOP HEADER ==================== */}
+      <header className="fixed top-0 inset-x-0 z-50 h-16 border-b border-white/[0.06] bg-slate-950/80 backdrop-blur-2xl px-6 sm:px-10 flex items-center justify-between">
         <div className="flex items-center gap-6">
-          <button
-            onClick={() => switchFold(0)}
-            className="flex items-center gap-3 group text-left"
-          >
+          <Link href="/" className="flex items-center gap-3 group">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-indigo-600 p-[1px] shadow-lg shadow-cyan-500/15">
               <div className="w-full h-full bg-[#050914] rounded-[10px] flex items-center justify-center">
                 <Layers className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform" />
               </div>
             </div>
             <div className="flex flex-col">
-              <div className="flex items-center gap-2">
-                <span className="text-lg font-bold tracking-tight text-white font-display">
-                  Design<span className="text-cyan-400">Karo</span>
-                </span>
-              </div>
+              <span className="text-lg font-bold tracking-tight text-white font-display">
+                Design<span className="text-cyan-400">Karo</span>
+              </span>
               <span className="text-[10px] text-slate-400 font-light hidden sm:block tracking-wide">
                 Socho. Design Karo. Scale Karo.
               </span>
             </div>
-          </button>
+          </Link>
 
-          {/* Quick Route Nav in Header */}
-          <nav className="hidden xl:flex items-center gap-1 font-mono text-xs text-slate-400">
+          {/* Quick Route Nav */}
+          <nav className="hidden lg:flex items-center gap-1 font-mono text-xs text-slate-400">
             <Link
               href="/learn"
-              className="px-2.5 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
+              className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
             >
               LEARN
             </Link>
             <Link
               href="/practice"
-              className="px-2.5 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
+              className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
             >
               PRACTICE
             </Link>
             <Link
               href="/design"
-              className="px-2.5 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
+              className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
             >
               CANVAS
             </Link>
-            <Link
-              href="/simulate"
-              className="px-2.5 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
+            <a
+              href="#simulation-arena"
+              className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
             >
               SIMULATE
-            </Link>
+            </a>
+            <a
+              href="#invariants"
+              className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
+            >
+              INVARIANTS
+            </a>
             <Link
               href="/interview"
-              className="px-2.5 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
+              className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
             >
               INTERVIEW
             </Link>
             <Link
               href="/progress"
-              className="px-2.5 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
+              className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
             >
               PROGRESS
             </Link>
           </nav>
         </div>
 
-        {/* Active Stage Controls & Auth */}
+        {/* Auth & CTA */}
         <div className="flex items-center gap-3 sm:gap-4">
-          {/* Quick Loop Prev / Next mini buttons in header */}
-          <div className="flex items-center bg-white/[0.03] border border-white/[0.08] rounded-lg p-0.5">
-            <button
-              className="p-1.5 text-slate-400 hover:text-cyan-300 hover:bg-white/[0.05] rounded transition"
-              onClick={() => navigateLoop(-1)}
-              title="Previous Fold"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-            </button>
-            <button
-              className="p-1.5 text-slate-400 hover:text-cyan-300 hover:bg-white/[0.05] rounded transition"
-              onClick={() => navigateLoop(1)}
-              title="Next Fold"
-            >
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
           {isAuthenticated && user ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <span className="text-xs font-mono text-cyan-400 hidden sm:inline">
                 {user.email.split("@")[0]}
               </span>
@@ -298,179 +515,146 @@ export default function LandingPage() {
         </div>
       </header>
 
-      {/* 3D PERSPECTIVE VIEWPORT STAGE (Holds 3 Full-Screen 100vh Folds) */}
-      <div className="stage-perspective-viewport relative w-screen h-screen pt-16 pb-20 overflow-hidden">
-        {/* ==================== FOLD 1: HERO & PERSONALIZED DIAGNOSTIC ==================== */}
-        <section
-          className={`binder-fold-card absolute inset-0 pt-16 pb-24 px-6 sm:px-10 flex flex-col justify-between items-center overflow-y-auto lg:overflow-hidden custom-scrollbar ${getFoldClass(
-            0
-          )}`}
-          id="fold-0"
-        >
-          {/* Subtle Orbit Background Rings */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none -z-10 opacity-30">
-            <div className="w-[620px] h-[620px] rounded-full border border-white/[0.04] animate-pulse-slow" />
-            <div className="w-[940px] h-[940px] rounded-full border border-dashed border-cyan-500/15 animate-spin-slow" />
-          </div>
+      {/* ==================== HERO SECTION (PERFECTLY CENTERED HEADLINE & CONTEXT ANIMATION) ==================== */}
+      <section className="relative w-full h-screen min-h-[640px] flex flex-col justify-center items-center text-center px-4 overflow-hidden pt-16">
+        {/* Context-Aware Distributed Architecture Canvas */}
+        <canvas
+          ref={canvasRef}
+          onMouseMove={handleCanvasMouseMove}
+          onMouseLeave={handleCanvasMouseLeave}
+          onClick={handleCanvasClick}
+          className="absolute inset-0 w-full h-full pointer-events-auto z-0 cursor-crosshair"
+          title="Click to emit architecture ripple wave"
+        />
 
-          {/* Hero Typography Header */}
-          <div className="text-center max-w-5xl mx-auto pt-4 sm:pt-8 flex flex-col items-center">
-            <h1 className="text-4xl sm:text-6xl md:text-7xl lg:text-[5.2rem] font-black font-display text-white leading-[1.05] tracking-[-0.04em] mb-3">
+        {/* Ambient Lighting Behind Centered Content */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[450px] bg-cyan-600/15 blur-[160px] rounded-full pointer-events-none z-[1]" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[300px] bg-indigo-600/10 blur-[130px] rounded-full pointer-events-none z-[1]" />
+
+        {/* Centered Hero Content */}
+        <div className="relative z-10 flex flex-col items-center justify-center max-w-5xl mx-auto px-4 my-auto">
+          {/* Main Headline */}
+          <div className="relative group mb-6 sm:mb-8">
+            <div className="absolute -inset-10 bg-gradient-to-r from-cyan-500/20 via-sky-500/10 to-indigo-500/20 blur-3xl opacity-70 group-hover:opacity-100 transition duration-1000 -z-10" />
+
+            <h1 className="text-5xl sm:text-7xl md:text-8xl lg:text-[6.5rem] font-black font-display text-white leading-[1.04] tracking-[-0.03em] drop-shadow-2xl">
               Socho. Design Karo.
               <br />
               <span className="text-gradient-scale text-glow">Scale Karo.</span>
             </h1>
           </div>
 
-          {/* HERO DIAGNOSTIC 3D FLIP CARD */}
-          <div className="w-full max-w-4xl mx-auto flipper-container my-auto">
-            <div
-              className={`flipper-inner relative w-full min-h-[195px] ${
-                isFlipped ? "flipper-flipped" : ""
-              }`}
-              id="diagnostic-flip-card"
+          {/* Centered Action Buttons */}
+          <div className="flex flex-wrap items-center justify-center gap-4 mt-2">
+            <Link
+              href="/design"
+              className="inline-flex items-center gap-2.5 px-8 py-4 rounded-2xl bg-gradient-to-r from-cyan-400 via-sky-400 to-indigo-500 hover:from-cyan-300 hover:to-indigo-400 text-slate-950 font-extrabold text-sm sm:text-base tracking-wide transition-all duration-200 shadow-2xl shadow-cyan-500/30 hover:shadow-cyan-400/50 hover:scale-105 active:scale-95"
             >
-              {/* FRONT FACE: The Diagnostic Intro Card */}
-              <div className="flipper-front w-full zen-core-card rounded-3xl p-6 sm:p-8 cyber-core-glow relative overflow-hidden group">
-                <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400/80 to-transparent" />
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
-                  <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
-                    <div className="w-14 h-14 rounded-2xl bg-cyan-950/90 border-2 border-cyan-400/40 flex items-center justify-center shrink-0 text-cyan-300 shadow-xl shadow-cyan-500/20">
-                      <Compass className="w-7 h-7" />
-                    </div>
-                    <div>
-                      <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 mb-2">
-                        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-cyan-400 bg-cyan-500/15 px-3 py-0.5 rounded-full border border-cyan-400/30">
-                          Personalized Diagnostic
-                        </span>
-                      </div>
-                      <h3 className="text-xl sm:text-2xl font-black font-display text-white tracking-tight">
-                        Assess your real-world System Design Level
-                      </h3>
-                      <p className="text-xs sm:text-sm text-slate-300 font-light mt-1 max-w-xl leading-relaxed">
-                        Answer 6 scenario questions to uncover architectural gaps and get a custom track.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="w-full sm:w-auto shrink-0 flex flex-col gap-2">
-                    <button
-                      onClick={() => setIsFlipped(true)}
-                      className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-500 hover:from-cyan-300 hover:to-sky-400 text-slate-950 font-bold text-xs sm:text-sm tracking-wide transition shadow-xl shadow-cyan-500/25 active:scale-95"
-                      id="flip-to-questions-btn"
-                    >
-                      <span>Start Diagnostic</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </button>
-                    <span className="text-[10px] font-mono text-center text-cyan-400/80">
-                      Click to flip 3D card ↷
-                    </span>
-                  </div>
-                </div>
-                <div className="mt-4 pt-3 border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-3 text-xs font-mono text-slate-400">
-                  <span className="flex items-center gap-2 text-cyan-400">
-                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-                    Engine ready for evaluation
-                  </span>
-                  <div className="flex items-center gap-4">
-                    <Link
-                      href="/practice"
-                      className="hover:text-cyan-300 transition-colors"
-                    >
-                      50+ Problem Catalog →
-                    </Link>
-                  </div>
-                </div>
-              </div>
+              <Zap className="w-5 h-5 fill-current text-slate-950" />
+              <span>Start System Design</span>
+              <ArrowRight className="w-4 h-4 text-slate-950" />
+            </Link>
 
-              {/* BACK FACE: Interactive 3D Question Preview */}
-              <div className="flipper-back absolute inset-0 w-full h-full zen-core-card rounded-3xl p-6 sm:p-8 cyber-core-glow flex flex-col justify-between">
-                <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
-                  <span className="text-xs font-mono text-cyan-300 font-semibold uppercase tracking-wider">
-                    Question 01 / 06 • Scalability Dilemma
-                  </span>
-                  <button
-                    onClick={() => setIsFlipped(false)}
-                    className="text-xs font-mono text-slate-400 hover:text-white px-2.5 py-1 rounded bg-white/[0.05]"
-                  >
-                    ↶ Flip Back
-                  </button>
-                </div>
-                <div className="py-3">
-                  <p className="text-sm sm:text-base font-medium text-white mb-3">
-                    Your API Gateway spikes from 15,000 to 180,000 QPS in 4 seconds due to flash sales. What is your primary defense?
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <div
-                      onClick={() => switchFold(1)}
-                      className="p-2.5 rounded-xl bg-slate-900/90 border border-cyan-500/40 text-xs text-cyan-200 cursor-pointer hover:bg-cyan-950/40 flex items-center gap-2"
-                    >
-                      <span className="font-mono text-cyan-400 font-bold">A</span>
-                      <span>Token Bucket rate limiting + Redis cluster replica pool</span>
-                    </div>
-                    <div
-                      onClick={() => switchFold(1)}
-                      className="p-2.5 rounded-xl bg-slate-900/90 border border-white/[0.06] text-xs text-slate-300 cursor-pointer hover:border-cyan-500/40 flex items-center gap-2"
-                    >
-                      <span className="font-mono text-slate-400 font-bold">B</span>
-                      <span>Immediately autoscale pod count to 500 replicas</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between pt-2 border-t border-white/[0.06] text-xs font-mono">
-                  <span className="text-emerald-400">Evaluating: p99 Latency resilience</span>
-                  <button
-                    className="text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1"
-                    onClick={() => switchFold(1)}
-                  >
-                    Jump into Live Topology Arena →
-                  </button>
-                </div>
-              </div>
+            <Link
+              href="/practice"
+              className="inline-flex items-center gap-2.5 px-7 py-4 rounded-2xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.15] text-white font-semibold text-sm sm:text-base transition-all duration-200 backdrop-blur-xl hover:scale-105 active:scale-95"
+            >
+              <Compass className="w-5 h-5 text-cyan-400" />
+              <span>Practice FAANG Problems</span>
+            </Link>
+
+            <a
+              href="#simulation-arena"
+              className="inline-flex items-center gap-2 px-6 py-4 rounded-2xl bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/30 text-cyan-300 font-medium text-sm transition-all duration-200 backdrop-blur-xl hover:scale-105 active:scale-95"
+            >
+              <Play className="w-4 h-4 fill-current text-cyan-400" />
+              <span>Live Simulation Arena ↓</span>
+            </a>
+          </div>
+
+          {/* Architectural Background Context Selector */}
+          <div className="mt-8 sm:mt-10 flex flex-col items-center gap-2.5">
+            <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+              <span className="text-[11px] uppercase tracking-wider text-slate-400">
+                Architecture Background Context:
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-center gap-2 bg-slate-950/80 backdrop-blur-xl p-1.5 rounded-2xl border border-white/[0.1] shadow-2xl">
+              {contexts.map((ctx) => (
+                <button
+                  key={ctx.id}
+                  onClick={() => setActiveContext(ctx.id)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-mono transition-all duration-200 flex items-center gap-2 ${
+                    activeContext === ctx.id
+                      ? "bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 shadow-[0_0_12px_rgba(6,182,212,0.3)] font-bold scale-105"
+                      : "text-slate-400 hover:text-white hover:bg-white/[0.05] border border-transparent"
+                  }`}
+                >
+                  <span>{ctx.icon}</span>
+                  <span>{ctx.name}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Dynamic Telemetry Pill */}
+            <div className="text-[11px] font-mono text-cyan-400/90 bg-cyan-950/60 px-4 py-1.5 rounded-full border border-cyan-800/40 mt-1 flex items-center gap-2 shadow-lg">
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              <span>{activeContextData.telemetry}</span>
             </div>
           </div>
-        </section>
+        </div>
 
-        {/* ==================== FOLD 2: INTERACTIVE ARCHITECTURE SIMULATION WORKSPACE ==================== */}
-        <section
-          className={`binder-fold-card absolute inset-0 pt-16 pb-24 px-4 sm:px-8 flex flex-col justify-between overflow-hidden ${getFoldClass(
-            1
-          )}`}
-          id="fold-1"
-        >
-          {/* Section Mini Title Header */}
-          <div className="flex flex-wrap items-center justify-between gap-2 max-w-7xl mx-auto w-full pt-2 pb-1">
+        {/* Scroll Indicator */}
+        <div className="absolute bottom-5 inset-x-0 flex flex-col items-center justify-center pointer-events-none z-10 text-slate-500 hover:text-slate-300 transition text-xs font-mono">
+          <a
+            href="#simulation-arena"
+            className="pointer-events-auto flex flex-col items-center gap-1 opacity-70 hover:opacity-100 transition"
+          >
+            <span>Scroll to explore Live Simulation Arena</span>
+            <div className="w-5 h-8 rounded-full border border-white/20 flex items-start justify-center p-1">
+              <div className="w-1.5 h-2 bg-cyan-400 rounded-full animate-bounce" />
+            </div>
+          </a>
+        </div>
+      </section>
+
+      {/* ==================== SECTION 2: INTERACTIVE SIMULATION WORKSPACE ARENA ==================== */}
+      <section
+        id="simulation-arena"
+        className="relative w-full py-20 px-4 sm:px-8 border-t border-white/[0.06] bg-[#060b18]"
+      >
+        <div className="max-w-7xl mx-auto">
+          {/* Section Header */}
+          <div className="flex flex-wrap items-center justify-between gap-4 pb-6 mb-4 border-b border-white/[0.06]">
             <div>
-              <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-cyan-950/60 border border-cyan-800/40 text-[10px] font-mono text-cyan-400 mb-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                Live Spatial Simulation Canvas
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/60 border border-cyan-800/40 text-xs font-mono text-cyan-400 mb-2">
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                Live Spatial Simulation Arena
               </div>
-              <h2 className="text-xl sm:text-2xl font-extrabold font-display text-white tracking-tight leading-tight">
-                Interactive Architecture Canvas &amp; Live Simulation
+              <h2 className="text-2xl sm:text-3xl font-extrabold font-display text-white tracking-tight">
+                Interactive Architecture Simulation Workspace
               </h2>
-              <p className="text-xs text-slate-400 font-light hidden sm:block">
-                Experience our 3-panel developer workspace: Palette, Live Topology Node Graph, and AI Socratic Inspector.
+              <p className="text-sm text-slate-400 font-light mt-1">
+                Experience real distributed traffic, fault injections, and AI Socratic mentoring live in the browser.
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                className="text-xs font-mono text-slate-400 hover:text-white px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] transition"
-                onClick={() => switchFold(0)}
+            <div className="flex items-center gap-3">
+              <Link
+                href="/design"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs font-mono transition shadow-lg shadow-cyan-500/20"
               >
-                ← Previous
-              </button>
-              <button
-                className="text-xs font-mono text-cyan-400 hover:text-cyan-300 px-3 py-1.5 rounded-lg bg-cyan-950/50 border border-cyan-800/40 transition"
-                onClick={() => switchFold(2)}
-              >
-                Next →
-              </button>
+                <span>Launch Full Canvas</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
             </div>
           </div>
 
-          {/* Main Canvas Container */}
-          <div className="relative max-w-7xl mx-auto w-full flex-1 rounded-2xl border border-white/[0.08] bg-[#070d18] shadow-2xl overflow-hidden flex flex-col my-1">
+          {/* Main Simulation Container */}
+          <div className="relative w-full rounded-2xl border border-white/[0.08] bg-[#070d18] shadow-2xl overflow-hidden flex flex-col">
             {/* Control Bar */}
-            <div className="px-4 py-2.5 bg-slate-900/90 border-b border-white/[0.06] flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
+            <div className="px-4 py-3 bg-slate-900/90 border-b border-white/[0.06] flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
               <div className="flex items-center gap-2">
                 <span className="flex h-2.5 w-2.5 relative">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
@@ -523,17 +707,11 @@ export default function LandingPage() {
                   <span className="hidden sm:inline">AI Architect Coach</span>
                   <span className="sm:hidden">AI</span>
                 </button>
-                <Link
-                  href="/design"
-                  className="px-3 py-1.5 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 text-xs font-mono font-medium transition"
-                >
-                  Open Full Canvas
-                </Link>
               </div>
             </div>
 
             {/* 3-Panel Arena Body */}
-            <div className="relative flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden min-h-0">
+            <div className="relative flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden min-h-[440px]">
               {/* LEFT PANEL: Component Palette */}
               <div className="hidden lg:flex lg:col-span-3 border-r border-white/[0.06] bg-[#091122]/90 p-4 flex-col justify-between overflow-y-auto">
                 <div>
@@ -672,477 +850,488 @@ export default function LandingPage() {
                     fill="none"
                     stroke="#64748b"
                     strokeDasharray="4,4"
-                    strokeWidth="1.8"
-                  />
-                  <path
-                    className="traffic-flow-reverse"
-                    d="M 550 320 C 640 320, 670 280, 710 240"
-                    fill="none"
-                    stroke="#f59e0b"
-                    strokeOpacity="0.75"
-                    strokeWidth="1.8"
+                    strokeWidth="1.5"
                   />
                 </svg>
 
-                {/* Topology Nodes */}
-                <div className="relative z-10 w-full flex items-center justify-between px-2 sm:px-8">
-                  {/* Node 1: Client Fleet */}
-                  <div className="flex flex-col items-center gap-1.5 group cursor-pointer">
-                    <div className="w-12 h-12 rounded-xl bg-slate-900/90 border-2 border-slate-700/80 group-hover:border-sky-400 flex items-center justify-center text-slate-300 shadow-xl transition-all group-hover:scale-105">
-                      <Globe className="w-6 h-6 text-sky-400" />
+                {/* Nodes Grid */}
+                <div className="relative z-10 w-full max-w-3xl flex items-center justify-between gap-4 py-8">
+                  {/* Node: Ingress Users */}
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-16 h-16 rounded-2xl bg-slate-900/90 border border-sky-500/40 p-2 shadow-xl flex flex-col items-center justify-center text-center group hover:border-sky-400 transition">
+                      <Globe className="w-5 h-5 text-sky-400 mb-1" />
+                      <span className="text-[10px] font-mono text-slate-300 font-bold">USERS</span>
                     </div>
-                    <span className="text-xs font-mono font-medium text-slate-300">100M Clients</span>
-                    <span className="text-[9px] font-mono text-cyan-400 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-800/40">
-                      Edge
+                    <span className="text-[10px] font-mono text-sky-400 bg-sky-950/60 px-2 py-0.5 rounded border border-sky-900/50">
+                      100M/day
                     </span>
                   </div>
 
-                  {/* Node 2: Central API Gateway Core */}
-                  <div className="flex flex-col items-center gap-1.5 group cursor-pointer">
-                    <div className="w-14 h-14 rounded-2xl bg-cyan-950/90 border-2 border-cyan-400 flex flex-col items-center justify-center text-cyan-300 shadow-2xl shadow-cyan-500/30 group-hover:scale-110 transition-all">
-                      <ShieldCheck className="w-5 h-5 text-cyan-300 mb-0.5 animate-pulse" />
-                      <span className="text-[9px] font-extrabold tracking-wider">GATEWAY</span>
+                  {/* Node: Load Balancer */}
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-16 h-16 rounded-2xl bg-slate-900/90 border border-cyan-500/50 p-2 shadow-xl shadow-cyan-500/10 flex flex-col items-center justify-center text-center">
+                      <Server className="w-5 h-5 text-cyan-400 mb-1" />
+                      <span className="text-[10px] font-mono text-slate-300 font-bold">ENV_LB</span>
                     </div>
-                    <span className="text-xs font-mono font-semibold text-emerald-400">Auth &amp; Rate</span>
-                    <span className="text-[10px] font-mono text-slate-400">25,000 QPS</span>
+                    <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-900/50">
+                      Round-Robin
+                    </span>
                   </div>
 
-                  {/* Node 3: Microservice Cluster & Event Stream */}
-                  <div className="flex flex-col gap-10 items-center">
-                    <div className="flex flex-col items-center gap-1 group cursor-pointer">
-                      <div className="px-3.5 py-2 rounded-xl bg-indigo-950/90 border-2 border-indigo-400 text-white flex items-center gap-2 shadow-xl shadow-indigo-500/25 group-hover:scale-105 transition-all">
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                        <span className="text-xs font-bold font-mono">Ranking SVC (x12)</span>
-                      </div>
-                      <span className="text-[9px] font-mono text-slate-300">Go / Vector Search</span>
+                  {/* Node Cluster: Microservices & Cache */}
+                  <div className="flex flex-col gap-6">
+                    <div className="w-20 h-16 rounded-2xl bg-slate-900/90 border border-indigo-500/40 p-2 shadow-xl flex flex-col items-center justify-center text-center">
+                      <Cpu className="w-5 h-5 text-indigo-400 mb-1" />
+                      <span className="text-[10px] font-mono text-slate-300 font-bold">REC_SVC</span>
                     </div>
-                    <div className="flex flex-col items-center gap-1 group cursor-pointer">
-                      <div className="px-3 py-2 rounded-xl bg-slate-900/90 border-2 border-amber-500/70 text-slate-200 flex items-center gap-2 shadow-lg shadow-amber-500/20 group-hover:scale-105 transition-all">
-                        <Radio className="w-3.5 h-3.5 text-amber-400 animate-spin" />
-                        <span className="text-xs font-bold font-mono">Kafka Logs</span>
-                      </div>
-                      <span className="text-[9px] font-mono text-amber-400">450k/sec</span>
+                    <div className="w-20 h-16 rounded-2xl bg-slate-900/90 border border-amber-500/40 p-2 shadow-xl flex flex-col items-center justify-center text-center">
+                      <Radio className="w-5 h-5 text-amber-400 mb-1" />
+                      <span className="text-[10px] font-mono text-slate-300 font-bold">KAFKA_BUS</span>
                     </div>
                   </div>
 
-                  {/* Node 4: Storage & Caching Cluster */}
-                  <div className="flex flex-col gap-8 items-center">
-                    <div className="flex flex-col items-center gap-1 group cursor-pointer">
-                      <div className="px-3 py-2 rounded-xl bg-rose-950/80 border-2 border-rose-500 text-rose-200 flex items-center gap-1.5 shadow-xl shadow-rose-500/25 group-hover:scale-105 transition-all">
-                        <Zap className="w-3.5 h-3.5 text-rose-400" />
-                        <span className="text-xs font-bold font-mono">Redis Cache</span>
-                      </div>
-                      <span className="text-[9px] font-mono text-emerald-400">98.4% Hit Rate</span>
+                  {/* Node Cluster: Storage & ML Database */}
+                  <div className="flex flex-col gap-6">
+                    <div className="w-18 h-16 rounded-2xl bg-slate-900/90 border border-rose-500/40 p-2 shadow-xl flex flex-col items-center justify-center text-center">
+                      <Database className="w-5 h-5 text-rose-400 mb-1" />
+                      <span className="text-[10px] font-mono text-slate-300 font-bold">REDIS_SHARD</span>
                     </div>
-                    <div className="flex flex-col items-center gap-1 group cursor-pointer">
-                      <div className="px-3 py-1.5 rounded-xl bg-slate-900/90 border-2 border-blue-500/70 text-slate-300 flex items-center gap-1.5 shadow-lg shadow-blue-500/20 group-hover:scale-105 transition-all">
-                        <Database className="w-3.5 h-3.5 text-blue-400" />
-                        <span className="text-xs font-bold font-mono">PostgreSQL</span>
-                      </div>
-                      <span className="text-[9px] font-mono text-slate-400">Master + 3 Replicas</span>
+                    <div className="w-18 h-16 rounded-2xl bg-slate-900/90 border border-blue-500/40 p-2 shadow-xl flex flex-col items-center justify-center text-center">
+                      <Database className="w-5 h-5 text-blue-400 mb-1" />
+                      <span className="text-[10px] font-mono text-slate-300 font-bold">POSTGRES</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Bottom Telemetry Bar */}
-                <div className="absolute bottom-2.5 left-4 right-4 flex items-center justify-between pointer-events-none">
-                  <div className="flex items-center gap-2 bg-slate-900/90 border border-white/[0.06] px-3 py-1 rounded-lg text-[10.5px] text-slate-400 font-mono pointer-events-auto">
-                    <span className="text-emerald-400">● 100% Availability</span>
-                    <span className="text-slate-600">|</span>
-                    <span>Cluster: us-east-1</span>
-                    <span className="text-slate-600">|</span>
-                    <span className="text-cyan-400">Active Topology: Mesh v2.4</span>
-                  </div>
-                  <div className="text-[10px] font-mono text-slate-500 hidden sm:block">
-                    Click nodes on canvas to inspect telemetry
-                  </div>
-                </div>
-              </div>
-
-              {/* SLIDE-DRAWER / EMBEDDED AI SOCRATIC COACH */}
-              <div
-                className={`absolute inset-y-0 right-0 w-full sm:w-[380px] bg-[#091122]/95 backdrop-blur-2xl border-l border-violet-500/40 p-5 flex flex-col justify-between z-30 transition-transform duration-300 shadow-2xl ${
-                  drawerOpen ? "translate-x-0" : "translate-x-full"
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/[0.06]">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-lg bg-violet-500/20 text-violet-300 flex items-center justify-center font-bold text-xs border border-violet-500/40">
-                        AI
-                      </div>
-                      <div>
-                        <span className="text-xs font-bold text-white block">Senior Staff Coach</span>
-                        <span className="text-[9px] text-violet-400 font-mono">
-                          Socratic Architect Inspector
+                {/* Slide-out AI Socratic Coach Drawer */}
+                <div
+                  className={`absolute top-0 right-0 bottom-0 w-80 bg-[#091124]/95 border-l border-white/[0.1] backdrop-blur-xl p-4 flex flex-col justify-between transition-transform duration-300 z-30 shadow-2xl ${
+                    drawerOpen ? "translate-x-0" : "translate-x-full"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/[0.08]">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-violet-400" />
+                        <span className="text-xs font-mono font-bold text-white uppercase tracking-wider">
+                          Socratic AI Mentor
                         </span>
                       </div>
+                      <button
+                        onClick={() => setDrawerOpen(false)}
+                        className="text-slate-400 hover:text-white p-1 rounded-md hover:bg-white/[0.05]"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
                     </div>
-                    <button
-                      onClick={() => setDrawerOpen(false)}
-                      className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
-                      title="Close Drawer"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="p-3.5 rounded-xl bg-slate-900/95 border border-violet-500/40 text-xs shadow-lg">
-                      <div className="flex items-center gap-2 text-violet-300 font-semibold mb-1.5">
-                        <Cpu className="w-3.5 h-3.5 text-violet-400" />
-                        <span>Critical Socratic Challenge</span>
-                      </div>
-                      <p className="text-slate-300 leading-relaxed text-[11px] font-light">
-                        &quot;At 25k QPS, what happens if your{" "}
-                        <span className="text-rose-400 font-mono font-medium">
-                          Redis cache cluster
-                        </span>{" "}
-                        suffers a node failover during high evening prime-time traffic?&quot;
-                      </p>
-                      <div className="mt-2.5 pt-2 border-t border-white/[0.06] flex flex-col gap-1.5">
-                        <button
-                          onClick={() => {
-                            setDrawerOpen(false);
-                            switchFold(2);
-                          }}
-                          className="text-left text-[10.5px] text-cyan-300 hover:text-cyan-200 bg-cyan-950/50 p-2 rounded-lg transition border border-cyan-800/40"
-                        >
-                          👉 Suggest: Introduce Circuit Breaker + Stale Cache Policy
-                        </button>
-                        <button
-                          onClick={() => {
-                            setDrawerOpen(false);
-                            switchFold(2);
-                          }}
-                          className="text-left text-[10.5px] text-slate-300 hover:text-white bg-slate-800/70 p-2 rounded-lg transition border border-slate-700/50"
-                        >
-                          👉 Evaluate: Fallback database connection pool exhaustion
-                        </button>
-                      </div>
+                    <div className="p-3 rounded-xl bg-violet-950/40 border border-violet-500/30 text-xs text-violet-200 mb-3">
+                      <span className="font-bold block mb-1">Architectural Challenge:</span>
+                      &quot;How would you prevent a cache stampede on Redis when a popular movie drops at 12:00 AM?&quot;
                     </div>
-
-                    <div className="p-3 rounded-xl bg-slate-900/70 border border-white/[0.06] text-xs">
-                      <div className="text-[9.5px] font-mono text-slate-400 uppercase tracking-wide mb-2 flex items-center justify-between">
-                        <span>Selected Node Specs</span>
-                        <span className="text-emerald-400">Active</span>
-                      </div>
-                      <div className="space-y-1.5 font-mono text-[10.5px]">
-                        <div className="flex justify-between text-slate-300">
-                          <span>Node Type:</span>
-                          <span className="text-white font-medium">Redis v7.2 Cluster</span>
-                        </div>
-                        <div className="flex justify-between text-slate-300">
-                          <span>Eviction:</span>
-                          <span className="text-cyan-400">volatile-lru</span>
-                        </div>
-                        <div className="flex justify-between text-slate-300">
-                          <span>Replication:</span>
-                          <span className="text-emerald-400">Async (Multi-AZ)</span>
-                        </div>
-                        <div className="flex justify-between text-slate-300">
-                          <span>Memory Cap:</span>
-                          <span className="text-white">64 GB / Node</span>
-                        </div>
-                      </div>
+                    <div className="space-y-2 text-xs font-mono">
+                      <button className="w-full text-left p-2.5 rounded-lg bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.06] text-slate-300 hover:text-white transition">
+                        A) Mutual exclusion locks (Mutex / Singleflight)
+                      </button>
+                      <button className="w-full text-left p-2.5 rounded-lg bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.06] text-slate-300 hover:text-white transition">
+                        B) Probabilistic early cache recomputation (XFetch)
+                      </button>
+                      <button className="w-full text-left p-2.5 rounded-lg bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.06] text-slate-300 hover:text-white transition">
+                        C) Pre-warm cache via async cron 30 min before
+                      </button>
                     </div>
                   </div>
-                </div>
-
-                <div className="mt-3 pt-2 border-t border-white/[0.06]">
-                  <Link
-                    href="/interview"
-                    className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold transition"
-                  >
-                    <span>Launch AI Mock Interview</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
+                  <div className="pt-3 border-t border-white/[0.06] text-[11px] font-mono text-emerald-400 flex items-center justify-between">
+                    <span>Dimension: High Availability</span>
+                    <span className="font-bold">Score: 92/100</span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* ==================== FOLD 3: THE 6 ARCHITECTURAL INVARIANTS & 3 CAPABILITY PILLARS ==================== */}
-        <section
-          className={`binder-fold-card absolute inset-0 pt-16 pb-24 px-6 sm:px-10 flex flex-col justify-between overflow-y-auto custom-scrollbar ${getFoldClass(
-            2
-          )}`}
-          id="fold-2"
-        >
-          <div className="max-w-7xl mx-auto w-full pt-4">
-            {/* Eyebrow with loop shortcut hint */}
-            <div className="text-center mb-6 flex items-center justify-center gap-3">
-              <span className="text-[10px] font-mono font-semibold tracking-widest text-cyan-400/90 uppercase px-4 py-1.5 rounded-full bg-cyan-950/40 border border-cyan-800/30">
-                THE 6 ARCHITECTURAL INVARIANTS DESIGNKARO FORCES YOU TO ANSWER
+      {/* ==================== SECTION 3: ARCHITECTURAL INVARIANTS (THE 6 PILLARS) ==================== */}
+      <section
+        id="invariants"
+        className="relative w-full py-20 px-4 sm:px-8 border-t border-white/[0.06] bg-[#050914]"
+      >
+        <div className="max-w-7xl mx-auto">
+          {/* Section Header */}
+          <div className="text-center max-w-3xl mx-auto mb-14">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/60 border border-cyan-800/40 text-xs font-mono text-cyan-400 mb-3">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Core Engineering Foundations</span>
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-extrabold font-display text-white tracking-tight">
+              The 6 Invariants of Scalable System Design
+            </h2>
+            <p className="text-sm text-slate-400 font-light mt-2">
+              Every production system boils down to these 6 fundamental questions. Master them through deterministic simulation.
+            </p>
+          </div>
+
+          {/* 6 Invariant Bento Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-14">
+            {/* 1. WHAT */}
+            <div className="zen-bento-card rounded-2xl p-6 flex flex-col justify-between group">
+              <div>
+                <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/[0.06]">
+                  <span className="text-xs font-mono font-bold text-cyan-400 tracking-widest">
+                    WHAT?
+                  </span>
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_#06b6d4]" />
+                </div>
+                <h3 className="text-lg font-bold font-display text-white mb-2 group-hover:text-cyan-300 transition-colors">
+                  Topology &amp; Components
+                </h3>
+                <p className="text-xs font-light text-slate-400 leading-relaxed">
+                  Which load balancers, gateways, microservices, caches, and storage tiers form your pipeline?
+                </p>
+              </div>
+              <div className="mt-6 pt-3 border-t border-white/[0.04] flex items-center justify-between text-xs font-mono text-slate-500">
+                <span>01 / ARCHITECTURE</span>
+                <span className="text-cyan-400 font-semibold group-hover:translate-x-1 transition-transform">
+                  EXPLORE →
+                </span>
+              </div>
+            </div>
+
+            {/* 2. WHY */}
+            <div className="zen-bento-card rounded-2xl p-6 flex flex-col justify-between group">
+              <div>
+                <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/[0.06]">
+                  <span className="text-xs font-mono font-bold text-sky-400 tracking-widest">
+                    WHY?
+                  </span>
+                  <span className="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_#38bdf8]" />
+                </div>
+                <h3 className="text-lg font-bold font-display text-white mb-2 group-hover:text-sky-300 transition-colors">
+                  Trade-Off Justification
+                </h3>
+                <p className="text-xs font-light text-slate-400 leading-relaxed">
+                  Why Cassandra over PostgreSQL? Why Kafka over SQS? Defend every tool selection with latency, cost, and throughput metrics.
+                </p>
+              </div>
+              <div className="mt-6 pt-3 border-t border-white/[0.04] flex items-center justify-between text-xs font-mono text-slate-500">
+                <span>02 / REASONING</span>
+                <span className="text-sky-400 font-semibold group-hover:translate-x-1 transition-transform">
+                  EXPLORE →
+                </span>
+              </div>
+            </div>
+
+            {/* 3. WHAT IF */}
+            <div className="zen-bento-card rounded-2xl p-6 flex flex-col justify-between group">
+              <div>
+                <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/[0.06]">
+                  <span className="text-xs font-mono font-bold text-amber-400 tracking-widest">
+                    WHAT IF?
+                  </span>
+                  <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_8px_#fbbf24]" />
+                </div>
+                <h3 className="text-lg font-bold font-display text-white mb-2 group-hover:text-amber-300 transition-colors">
+                  Chaos &amp; Failure Modes
+                </h3>
+                <p className="text-xs font-light text-slate-400 leading-relaxed">
+                  What happens when an entire AWS Availability Zone drops offline or your cache cluster evicts all keys?
+                </p>
+              </div>
+              <div className="mt-6 pt-3 border-t border-white/[0.04] flex items-center justify-between text-xs font-mono text-slate-500">
+                <span>03 / RESILIENCE</span>
+                <span className="text-amber-400 font-semibold group-hover:translate-x-1 transition-transform">
+                  EXPLORE →
+                </span>
+              </div>
+            </div>
+
+            {/* 4. WHAT BREAKS */}
+            <div className="zen-bento-card rounded-2xl p-6 flex flex-col justify-between group">
+              <div>
+                <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/[0.06]">
+                  <span className="text-xs font-mono font-bold text-rose-400 tracking-widest">
+                    WHAT BREAKS?
+                  </span>
+                  <span className="w-2 h-2 rounded-full bg-rose-400 shadow-[0_0_8px_#f43f5e]" />
+                </div>
+                <h3 className="text-lg font-bold font-display text-white mb-2 group-hover:text-rose-300 transition-colors">
+                  Bottlenecks &amp; SPOF
+                </h3>
+                <p className="text-xs font-light text-slate-400 leading-relaxed">
+                  Detect Single Points of Failure, memory leak cascading timeouts, database lock contention, and network backpressure.
+                </p>
+              </div>
+              <div className="mt-6 pt-3 border-t border-white/[0.04] flex items-center justify-between text-xs font-mono text-slate-500">
+                <span>04 / BOTTLENECKS</span>
+                <span className="text-rose-400 font-semibold group-hover:translate-x-1 transition-transform">
+                  EXPLORE →
+                </span>
+              </div>
+            </div>
+
+            {/* 5. HOW SCALE */}
+            <div className="zen-bento-card rounded-2xl p-6 flex flex-col justify-between group">
+              <div>
+                <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/[0.06]">
+                  <span className="text-xs font-mono font-bold text-emerald-400 tracking-widest">
+                    HOW SCALE?
+                  </span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
+                </div>
+                <h3 className="text-lg font-bold font-display text-white mb-2 group-hover:text-emerald-300 transition-colors">
+                  Sharding &amp; Horizontal Scale
+                </h3>
+                <p className="text-xs font-light text-slate-400 leading-relaxed">
+                  Consistent hashing rings, partition keys, multi-tier CDN caching, read replicas, and asynchronous write-back.
+                </p>
+              </div>
+              <div className="mt-6 pt-3 border-t border-white/[0.04] flex items-center justify-between text-xs font-mono text-slate-500">
+                <span>05 / DISTRIBUTION</span>
+                <span className="text-emerald-400 font-semibold group-hover:translate-x-1 transition-transform">
+                  EXPLORE →
+                </span>
+              </div>
+            </div>
+
+            {/* 6. TRADE-OFFS */}
+            <div className="zen-bento-card rounded-2xl p-6 flex flex-col justify-between group">
+              <div>
+                <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/[0.06]">
+                  <span className="text-xs font-mono font-bold text-violet-400 tracking-widest">
+                    TRADE-OFFS?
+                  </span>
+                  <span className="w-2 h-2 rounded-full bg-violet-400 shadow-[0_0_8px_#a78bfa]" />
+                </div>
+                <h3 className="text-lg font-bold font-display text-white mb-2 group-hover:text-violet-300 transition-colors">
+                  Latency vs Consistency
+                </h3>
+                <p className="text-xs font-light text-slate-400 leading-relaxed">
+                  CAP theorem compromises, PACELC theorem, ACID transactions vs BASE eventual consistency, and cloud costs.
+                </p>
+              </div>
+              <div className="mt-6 pt-3 border-t border-white/[0.04] flex items-center justify-between text-xs font-mono text-slate-500">
+                <span>06 / CAP THEOREM</span>
+                <span className="text-violet-400 font-semibold group-hover:translate-x-1 transition-transform">
+                  EXPLORE →
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* 3 Capability Pillars */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="zen-bento-card p-6 rounded-2xl group">
+              <div className="w-11 h-11 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center mb-4 border border-cyan-500/20 group-hover:scale-110 transition-transform">
+                <Zap className="w-5 h-5" />
+              </div>
+              <h3 className="text-base font-bold font-display text-white mb-2">
+                Chaos Engineering Tests
+              </h3>
+              <p className="text-xs font-light text-slate-400 leading-relaxed">
+                Trigger packet drops, database network partitions, and spike loads to observe how your distributed system reacts under real chaos.
+              </p>
+            </div>
+
+            <div className="zen-bento-card p-6 rounded-2xl group">
+              <div className="w-11 h-11 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center mb-4 border border-indigo-500/20 group-hover:scale-110 transition-transform">
+                <Cpu className="w-5 h-5" />
+              </div>
+              <h3 className="text-base font-bold font-display text-white mb-2">
+                Socratic AI Interviewer
+              </h3>
+              <p className="text-xs font-light text-slate-400 leading-relaxed">
+                Stop reciting generic high-level architectures. Our conversational AI challenges your decisions in real-time with FAANG rubric scoring.
+              </p>
+            </div>
+
+            <div className="zen-bento-card p-6 rounded-2xl group">
+              <div className="w-11 h-11 rounded-xl bg-sky-500/10 text-sky-400 flex items-center justify-center mb-4 border border-sky-500/20 group-hover:scale-110 transition-transform">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <h3 className="text-base font-bold font-display text-white mb-2">
+                Live Cost &amp; Cloud Estimation
+              </h3>
+              <p className="text-xs font-light text-slate-400 leading-relaxed">
+                Every node computes real AWS/GCP bills. Learn how your design decisions impact infrastructure cost, cross-AZ traffic, and compute efficiency.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ==================== SECTION 4: FAANG PRACTICE PROBLEM CATALOG ==================== */}
+      <section
+        id="practice-catalog"
+        className="relative w-full py-20 px-4 sm:px-8 border-t border-white/[0.06] bg-[#060b18]"
+      >
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-wrap items-center justify-between gap-4 pb-8 mb-6 border-b border-white/[0.06]">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/60 border border-cyan-800/40 text-xs font-mono text-cyan-400 mb-2">
+                <Compass className="w-3.5 h-3.5" />
+                <span>FAANG Architecture Catalog</span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-extrabold font-display text-white tracking-tight">
+                Practice Real-World Production Systems
+              </h2>
+              <p className="text-sm text-slate-400 font-light mt-1">
+                Step-by-step interactive scenarios tested against high QPS traffic and chaos conditions.
+              </p>
+            </div>
+            <Link
+              href="/practice"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-mono text-xs font-bold transition"
+            >
+              <span>View All 50+ Scenarios</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Problem 1 */}
+            <Link
+              href="/practice"
+              className="zen-bento-card p-5 rounded-2xl group hover:border-cyan-500/40 transition flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between pb-2 mb-2 text-[10px] font-mono">
+                  <span className="text-cyan-400 font-semibold">TIER 1 • MEDIUM</span>
+                  <span className="text-slate-500">100k QPS</span>
+                </div>
+                <h4 className="text-base font-bold font-display text-white mb-1 group-hover:text-cyan-300 transition-colors">
+                  TinyURL Shortener
+                </h4>
+                <p className="text-xs font-light text-slate-400">
+                  Base62 encoding, KGS counter, Redis LRU caching, and 301 vs 302 redirects.
+                </p>
+              </div>
+              <div className="mt-4 pt-2 border-t border-white/[0.04] flex items-center justify-between text-[11px] font-mono text-cyan-400">
+                <span>Start Practice</span>
+                <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </Link>
+
+            {/* Problem 2 */}
+            <Link
+              href="/practice"
+              className="zen-bento-card p-5 rounded-2xl group hover:border-sky-500/40 transition flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between pb-2 mb-2 text-[10px] font-mono">
+                  <span className="text-sky-400 font-semibold">TIER 1 • HARD</span>
+                  <span className="text-slate-500">1.2M QPS</span>
+                </div>
+                <h4 className="text-base font-bold font-display text-white mb-1 group-hover:text-sky-300 transition-colors">
+                  Uber Geospatial Matching
+                </h4>
+                <p className="text-xs font-light text-slate-400">
+                  QuadTree / H3 Hexagonal indexing, WebSocket driver heartbeats, and Redis pub/sub.
+                </p>
+              </div>
+              <div className="mt-4 pt-2 border-t border-white/[0.04] flex items-center justify-between text-[11px] font-mono text-sky-400">
+                <span>Start Practice</span>
+                <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </Link>
+
+            {/* Problem 3 */}
+            <Link
+              href="/practice"
+              className="zen-bento-card p-5 rounded-2xl group hover:border-indigo-500/40 transition flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between pb-2 mb-2 text-[10px] font-mono">
+                  <span className="text-indigo-400 font-semibold">TIER 2 • HARD</span>
+                  <span className="text-slate-500">500k Msg/s</span>
+                </div>
+                <h4 className="text-base font-bold font-display text-white mb-1 group-hover:text-indigo-300 transition-colors">
+                  WhatsApp Real-Time Chat
+                </h4>
+                <p className="text-xs font-light text-slate-400">
+                  TCP connection managers, distributed session registry, and Cassandra offline store.
+                </p>
+              </div>
+              <div className="mt-4 pt-2 border-t border-white/[0.04] flex items-center justify-between text-[11px] font-mono text-indigo-400">
+                <span>Start Practice</span>
+                <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </Link>
+
+            {/* Problem 4 */}
+            <Link
+              href="/practice"
+              className="zen-bento-card p-5 rounded-2xl group hover:border-amber-500/40 transition flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between pb-2 mb-2 text-[10px] font-mono">
+                  <span className="text-amber-400 font-semibold">TIER 1 • MEDIUM</span>
+                  <span className="text-slate-500">2.5M QPS</span>
+                </div>
+                <h4 className="text-base font-bold font-display text-white mb-1 group-hover:text-amber-300 transition-colors">
+                  Distributed Rate Limiter
+                </h4>
+                <p className="text-xs font-light text-slate-400">
+                  Sliding window log, token bucket Lua scripts, and multi-region synchronization.
+                </p>
+              </div>
+              <div className="mt-4 pt-2 border-t border-white/[0.04] flex items-center justify-between text-[11px] font-mono text-amber-400">
+                <span>Start Practice</span>
+                <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ==================== FOOTER ==================== */}
+      <footer className="w-full border-t border-white/[0.08] bg-[#040710] py-10 px-6 sm:px-12 text-xs text-slate-400 font-mono">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex flex-col gap-1 items-center md:items-start text-center md:text-left">
+            <div className="flex items-center gap-2">
+              <span className="text-base font-bold text-white font-display tracking-tight">
+                Design<span className="text-cyan-400">Karo</span>
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950/60 border border-cyan-800/40 text-cyan-400">
+                Live Platform
               </span>
             </div>
-
-            {/* 6 Invariants Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-              {/* Pillar 1: WHAT */}
-              <div className="zen-bento-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between group">
-                <div>
-                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.05]">
-                    <span className="text-xs font-mono font-bold text-cyan-400 tracking-widest">
-                      WHAT?
-                    </span>
-                    <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_#06b6d4]" />
-                  </div>
-                  <h4 className="text-base font-bold font-display text-white mb-1 group-hover:text-cyan-300 transition-colors">
-                    Functional Bounds
-                  </h4>
-                  <p className="text-xs font-light text-slate-400 leading-relaxed">
-                    Define scope, strict API contracts, and user flows
-                  </p>
-                </div>
-                <div className="mt-4 pt-2 border-t border-white/[0.03] flex items-center justify-between text-[10px] font-mono text-slate-500">
-                  <span>01 / BOUNDARY</span>
-                  <span className="text-cyan-400/60 font-semibold group-hover:text-cyan-300">
-                    STRICT SCOPE →
-                  </span>
-                </div>
-              </div>
-
-              {/* Pillar 2: WHY */}
-              <div className="zen-bento-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between group">
-                <div>
-                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.05]">
-                    <span className="text-xs font-mono font-bold text-sky-400 tracking-widest">
-                      WHY?
-                    </span>
-                    <span className="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_#38bdf8]" />
-                  </div>
-                  <h4 className="text-base font-bold font-display text-white mb-1 group-hover:text-sky-300 transition-colors">
-                    Quantitative Math
-                  </h4>
-                  <p className="text-xs font-light text-slate-400 leading-relaxed">
-                    Back-of-envelope calculations, QPS, IOPS &amp; egress
-                  </p>
-                </div>
-                <div className="mt-4 pt-2 border-t border-white/[0.03] flex items-center justify-between text-[10px] font-mono text-slate-500">
-                  <span>02 / ESTIMATION</span>
-                  <span className="text-sky-400/60 font-semibold group-hover:text-sky-300">
-                    NUMBERS FIRST →
-                  </span>
-                </div>
-              </div>
-
-              {/* Pillar 3: WHAT IF */}
-              <div className="zen-bento-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between group">
-                <div>
-                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.05]">
-                    <span className="text-xs font-mono font-bold text-amber-400 tracking-widest">
-                      WHAT IF?
-                    </span>
-                    <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_8px_#fbbf24]" />
-                  </div>
-                  <h4 className="text-base font-bold font-display text-white mb-1 group-hover:text-amber-300 transition-colors">
-                    10x Traffic Spikes
-                  </h4>
-                  <p className="text-xs font-light text-slate-400 leading-relaxed">
-                    Burst resilience, backpressure, and graceful degradation
-                  </p>
-                </div>
-                <div className="mt-4 pt-2 border-t border-white/[0.03] flex items-center justify-between text-[10px] font-mono text-slate-500">
-                  <span>03 / SPIKE PROOF</span>
-                  <span className="text-amber-400/60 font-semibold group-hover:text-amber-300">
-                    BACKPRESSURE →
-                  </span>
-                </div>
-              </div>
-
-              {/* Pillar 4: WHAT BREAKS */}
-              <div className="zen-bento-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between group">
-                <div>
-                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.05]">
-                    <span className="text-xs font-mono font-bold text-rose-400 tracking-widest">
-                      WHAT BREAKS?
-                    </span>
-                    <span className="w-2 h-2 rounded-full bg-rose-400 shadow-[0_0_8px_#fb7185]" />
-                  </div>
-                  <h4 className="text-base font-bold font-display text-white mb-1 group-hover:text-rose-300 transition-colors">
-                    Single Points of Failure
-                  </h4>
-                  <p className="text-xs font-light text-slate-400 leading-relaxed">
-                    Cascading drops, partition nets &amp; circuit breaker tests
-                  </p>
-                </div>
-                <div className="mt-4 pt-2 border-t border-white/[0.03] flex items-center justify-between text-[10px] font-mono text-slate-500">
-                  <span>04 / RESILIENCE</span>
-                  <span className="text-rose-400/60 font-semibold group-hover:text-rose-300">
-                    CIRCUIT BREAKERS →
-                  </span>
-                </div>
-              </div>
-
-              {/* Pillar 5: HOW SCALE */}
-              <div className="zen-bento-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between group">
-                <div>
-                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.05]">
-                    <span className="text-xs font-mono font-bold text-emerald-400 tracking-widest">
-                      HOW SCALE?
-                    </span>
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
-                  </div>
-                  <h4 className="text-base font-bold font-display text-white mb-1 group-hover:text-emerald-300 transition-colors">
-                    Sharding &amp; Caching
-                  </h4>
-                  <p className="text-xs font-light text-slate-400 leading-relaxed">
-                    Consistent hashing, multi-tier cache, read replicas
-                  </p>
-                </div>
-                <div className="mt-4 pt-2 border-t border-white/[0.03] flex items-center justify-between text-[10px] font-mono text-slate-500">
-                  <span>05 / DISTRIBUTION</span>
-                  <span className="text-emerald-400/60 font-semibold group-hover:text-emerald-300">
-                    HASH RINGS →
-                  </span>
-                </div>
-              </div>
-
-              {/* Pillar 6: TRADE-OFFS */}
-              <div className="zen-bento-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between group">
-                <div>
-                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.05]">
-                    <span className="text-xs font-mono font-bold text-violet-400 tracking-widest">
-                      TRADE-OFFS?
-                    </span>
-                    <span className="w-2 h-2 rounded-full bg-violet-400 shadow-[0_0_8px_#a78bfa]" />
-                  </div>
-                  <h4 className="text-base font-bold font-display text-white mb-1 group-hover:text-violet-300 transition-colors">
-                    Latency vs Consistency
-                  </h4>
-                  <p className="text-xs font-light text-slate-400 leading-relaxed">
-                    CAP theorem compromises, ACID vs BASE storage
-                  </p>
-                </div>
-                <div className="mt-4 pt-2 border-t border-white/[0.03] flex items-center justify-between text-[10px] font-mono text-slate-500">
-                  <span>06 / CAP THEOREM</span>
-                  <span className="text-violet-400/60 font-semibold group-hover:text-violet-300">
-                    STRICT TRADE-OFF →
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* 3 Capability Pillars */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <div className="zen-bento-card p-5 rounded-2xl group">
-                <div className="w-10 h-10 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center mb-3 border border-cyan-500/20 group-hover:scale-110 transition-transform">
-                  <Zap className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-bold font-display text-white mb-1.5">
-                  Chaos Engineering Tests
-                </h3>
-                <p className="text-xs font-light text-slate-400 leading-relaxed">
-                  Trigger packet drops, database network partitions, and spike loads to observe how your designed distributed system reacts under real chaos.
-                </p>
-              </div>
-
-              <div className="zen-bento-card p-5 rounded-2xl group">
-                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center mb-3 border border-indigo-500/20 group-hover:scale-110 transition-transform">
-                  <Cpu className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-bold font-display text-white mb-1.5">
-                  Socratic AI Interviewer
-                </h3>
-                <p className="text-xs font-light text-slate-400 leading-relaxed">
-                  Stop reciting generic high-level architectures. Our conversational AI challenges your decisions in real-time, asking &quot;Why Redis over Memcached here?&quot;.
-                </p>
-              </div>
-
-              <div className="zen-bento-card p-5 rounded-2xl group">
-                <div className="w-10 h-10 rounded-xl bg-sky-500/10 text-sky-400 flex items-center justify-center mb-3 border border-sky-500/20 group-hover:scale-110 transition-transform">
-                  <CheckCircle2 className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-bold font-display text-white mb-1.5">
-                  Live Cost &amp; Cloud Estimation
-                </h3>
-                <p className="text-xs font-light text-slate-400 leading-relaxed">
-                  Every node computes real AWS/GCP bills. Learn how your design decisions impact infrastructure cost, cross-AZ traffic, and compute efficiency.
-                </p>
-              </div>
-            </div>
-
-            {/* Continuous Loop Return Action Banner */}
-            <div className="my-6 p-3.5 rounded-2xl bg-gradient-to-r from-cyan-950/40 via-sky-950/30 to-indigo-950/40 border border-cyan-500/30 flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-300 flex items-center justify-center font-bold">
-                  <Layers className="w-4 h-4 text-cyan-400" />
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-white">Closed-Loop 360° Continuity</div>
-                  <div className="text-[11px] text-slate-400">
-                    Jump forward seamlessly back to the Hero Diagnostic canvas or explore earlier folds.
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  className="px-3 py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-xs font-mono text-slate-300 transition"
-                  onClick={() => switchFold(1)}
-                >
-                  ← Previous
-                </button>
-                <button
-                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-mono font-bold transition shadow-lg shadow-cyan-500/20 active:scale-95"
-                  onClick={() => switchFold(0)}
-                >
-                  <span>Return to Start</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Compact Footer Embedded in Fold 3 */}
-            <footer className="border-t border-white/[0.06] pt-4 pb-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 font-mono">
-              <div className="flex items-center gap-3">
-                <span className="font-bold text-slate-300 font-display tracking-tight text-sm">
-                  Design<span className="text-cyan-400">Karo</span>
-                </span>
-                <span>© 2026. Built for distributed engineers.</span>
-              </div>
-              <div className="flex items-center gap-5">
-                <Link className="hover:text-cyan-400 transition" href="/learn">
-                  Curriculum
-                </Link>
-                <Link className="hover:text-cyan-400 transition" href="/practice">
-                  Scenario Catalog
-                </Link>
-                <Link className="hover:text-cyan-400 transition" href="/design">
-                  Canvas
-                </Link>
-                <a
-                  className="hover:text-cyan-400 transition"
-                  href="http://127.0.0.1:8000/docs"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  API Docs
-                </a>
-              </div>
-            </footer>
+            <p className="text-[11px] text-slate-500">
+              Socho. Design Karo. Scale Karo. • Interactive Architecture &amp; System Design Simulator
+            </p>
           </div>
-        </section>
-      </div>
 
-      {/* FIXED SLEEK FLOATING 3D CLOSED-LOOP FOLD DOCK */}
-      <div className="fixed bottom-4 inset-x-0 z-50 flex justify-center pointer-events-none px-4">
-        <div className="pointer-events-auto bg-slate-950/80 backdrop-blur-xl border border-white/[0.1] rounded-2xl px-3 py-2 flex items-center gap-3 shadow-2xl">
-          {[0, 1, 2].map((idx) => (
-            <button
-              key={idx}
-              onClick={() => switchFold(idx)}
-              aria-label={`Go to slide ${idx + 1}`}
-              className={`rounded-full transition-all duration-300 ${
-                idx === currentFoldIndex
-                  ? "w-6 h-2 bg-cyan-400 shadow-[0_0_12px_#06b6d4]"
-                  : "w-2 h-2 bg-slate-600 hover:bg-slate-400"
-              }`}
-            />
-          ))}
+          <div className="flex flex-wrap items-center justify-center gap-6 text-slate-400">
+            <Link className="hover:text-cyan-400 transition" href="/learn">
+              Curriculum
+            </Link>
+            <Link className="hover:text-cyan-400 transition" href="/practice">
+              50+ Problems
+            </Link>
+            <Link className="hover:text-cyan-400 transition" href="/design">
+              Interactive Canvas
+            </Link>
+            <Link className="hover:text-cyan-400 transition" href="/simulate">
+              Chaos Simulator
+            </Link>
+            <Link className="hover:text-cyan-400 transition" href="/interview">
+              Mock Interview
+            </Link>
+            <a
+              className="hover:text-cyan-400 transition"
+              href="http://127.0.0.1:8000/docs"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              FastAPI Docs
+            </a>
+          </div>
+
+          <div className="text-[11px] text-slate-500 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>All Systems Operational</span>
+          </div>
         </div>
-      </div>
+      </footer>
 
       {/* Authentication Modal */}
       <AuthModal
