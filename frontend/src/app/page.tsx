@@ -315,11 +315,6 @@ export default function LandingPage() {
 
           {/* Hero Typography Header */}
           <div className="text-center max-w-5xl mx-auto pt-4 sm:pt-8 flex flex-col items-center">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-xs font-mono text-cyan-400 mb-4 backdrop-blur-sm">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-              <span>Interactive Architecture Learning &amp; Simulation Platform</span>
-            </div>
-
             <h1 className="text-4xl sm:text-6xl md:text-7xl lg:text-[5.2rem] font-black font-display text-white leading-[1.05] tracking-[-0.04em] mb-3">
               Socho. Design Karo.
               <br />
