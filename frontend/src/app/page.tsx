@@ -44,11 +44,6 @@ export default function LandingPage() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const totalFolds = 3;
-  const foldLabels = [
-    "FOLD 1 : HERO & DIAGNOSTIC",
-    "FOLD 2 : LIVE TOPOLOGY ARENA",
-    "FOLD 3 : 6 INVARIANTS & CAPABILITIES",
-  ];
 
   // Closed loop navigation
   const switchFold = (targetIndex: number, forceForward?: boolean) => {
@@ -203,9 +198,6 @@ export default function LandingPage() {
                 <span className="text-lg font-bold tracking-tight text-white font-display">
                   Design<span className="text-cyan-400">Karo</span>
                 </span>
-                <span className="rounded bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-mono font-medium text-cyan-400 border border-cyan-500/20">
-                  v0.1
-                </span>
               </div>
               <span className="text-[10px] text-slate-400 font-light hidden sm:block tracking-wide">
                 Socho. Design Karo. Scale Karo.
@@ -333,13 +325,6 @@ export default function LandingPage() {
               <br />
               <span className="text-gradient-scale text-glow">Scale Karo.</span>
             </h1>
-            <p className="text-sm sm:text-base text-slate-300 max-w-2xl font-light leading-relaxed">
-              Don&apos;t memorize architectures.{" "}
-              <span className="text-white font-semibold">
-                Learn how to reason through trade-offs
-              </span>{" "}
-              with live traffic simulations, deterministic rule checks, and Socratic AI mentoring.
-            </p>
           </div>
 
           {/* HERO DIAGNOSTIC 3D FLIP CARD */}
@@ -476,13 +461,13 @@ export default function LandingPage() {
                 className="text-xs font-mono text-slate-400 hover:text-white px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] transition"
                 onClick={() => switchFold(0)}
               >
-                ← Fold 1
+                ← Previous
               </button>
               <button
                 className="text-xs font-mono text-cyan-400 hover:text-cyan-300 px-3 py-1.5 rounded-lg bg-cyan-950/50 border border-cyan-800/40 transition"
                 onClick={() => switchFold(2)}
               >
-                Fold 3 (Invariants) →
+                Next →
               </button>
             </div>
           </div>
@@ -1102,13 +1087,13 @@ export default function LandingPage() {
                   className="px-3 py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-xs font-mono text-slate-300 transition"
                   onClick={() => switchFold(1)}
                 >
-                  ← Back to Fold 2
+                  ← Previous
                 </button>
                 <button
                   className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-mono font-bold transition shadow-lg shadow-cyan-500/20 active:scale-95"
                   onClick={() => switchFold(0)}
                 >
-                  <span>Loop to Fold 1</span>
+                  <span>Return to Start</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -1148,25 +1133,18 @@ export default function LandingPage() {
 
       {/* FIXED SLEEK FLOATING 3D CLOSED-LOOP FOLD DOCK */}
       <div className="fixed bottom-4 inset-x-0 z-50 flex justify-center pointer-events-none px-4">
-        <div className="pointer-events-auto bg-slate-950/80 backdrop-blur-xl border border-white/[0.1] rounded-2xl p-1.5 flex items-center gap-1.5 shadow-2xl">
-          {foldLabels.map((lbl, idx) => (
+        <div className="pointer-events-auto bg-slate-950/80 backdrop-blur-xl border border-white/[0.1] rounded-2xl px-3 py-2 flex items-center gap-3 shadow-2xl">
+          {[0, 1, 2].map((idx) => (
             <button
               key={idx}
               onClick={() => switchFold(idx)}
-              className={`px-3 sm:px-4 py-1.5 rounded-xl text-xs font-mono font-medium transition duration-200 flex items-center gap-2 ${
+              aria-label={`Go to slide ${idx + 1}`}
+              className={`rounded-full transition-all duration-300 ${
                 idx === currentFoldIndex
-                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 shadow-sm"
-                  : "text-slate-400 hover:text-white hover:bg-white/[0.05]"
+                  ? "w-6 h-2 bg-cyan-400 shadow-[0_0_12px_#06b6d4]"
+                  : "w-2 h-2 bg-slate-600 hover:bg-slate-400"
               }`}
-            >
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  idx === currentFoldIndex ? "bg-cyan-400" : "bg-slate-600"
-                }`}
-              />
-              <span className="hidden md:inline">{lbl}</span>
-              <span className="md:hidden">Fold {idx + 1}</span>
-            </button>
+            />
           ))}
         </div>
       </div>
