@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
+  transpilePackages: ["zustand"],
   reactStrictMode: true,
   async rewrites() {
     return [

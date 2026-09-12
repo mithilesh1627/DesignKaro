@@ -12,6 +12,34 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 security = HTTPBearer(auto_error=True)
+security_optional = HTTPBearer(auto_error=False)
+
+
+async def get_current_user_optional(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security_optional)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> User | None:
+    if not credentials:
+        return None
+    token = credentials.credentials
+    try:
+        payload = decode_token(token)
+        token_type = payload.get("type")
+        if token_type != "access":
+            return None
+        user_id_str = payload.get("sub")
+        if not user_id_str:
+            return None
+        user_id = uuid.UUID(user_id_str)
+    except Exception:
+        return None
+
+    stmt = select(User).where(User.id == user_id).options(selectinload(User.profile))
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
+    if user and user.is_active:
+        return user
+    return None
 
 
 async def get_current_user(

@@ -3,7 +3,7 @@ import logging
 
 from backend.app.core.database import AsyncSessionLocal, engine
 from backend.app.core.security import get_password_hash
-from backend.app.db.seed import LESSONS_SEED_DATA
+from backend.app.db.seed import LESSONS_SEED_DATA, QUESTIONS_SEED_DATA
 from backend.app.models import (
     Achievement,
     Base,
@@ -296,6 +296,22 @@ async def init_db():
             )
             session.add(sample_version)
 
+            # Seed questions
+            for q_data in QUESTIONS_SEED_DATA:
+                q_obj = Question(
+                    slug=q_data["slug"],
+                    title=q_data["title"],
+                    difficulty=q_data["difficulty"],
+                    category=q_data["category"],
+                    description=q_data["description"],
+                    requirements=q_data["requirements"],
+                    constraints=q_data["constraints"],
+                    expected_scale=q_data["expected_scale"],
+                    hints=q_data["hints"],
+                    evaluation_criteria=q_data["evaluation_criteria"],
+                )
+                session.add(q_obj)
+
             await session.commit()
             logger.info("Database seeding complete!")
         else:
@@ -321,8 +337,33 @@ async def init_db():
                         session.add(lesson_obj)
                 await session.commit()
                 logger.info("Lessons seeded successfully!")
+
+            # Check if questions need to be seeded
+            question_count = (await session.execute(select(func.count(Question.id)))).scalar() or 0
+            if question_count < len(QUESTIONS_SEED_DATA):
+                logger.info("Seeding missing questions...")
+                existing_q_slugs = set(
+                    (await session.execute(select(Question.slug))).scalars().all()
+                )
+                for q_data in QUESTIONS_SEED_DATA:
+                    if q_data["slug"] not in existing_q_slugs:
+                        q_obj = Question(
+                            slug=q_data["slug"],
+                            title=q_data["title"],
+                            difficulty=q_data["difficulty"],
+                            category=q_data["category"],
+                            description=q_data["description"],
+                            requirements=q_data["requirements"],
+                            constraints=q_data["constraints"],
+                            expected_scale=q_data["expected_scale"],
+                            hints=q_data["hints"],
+                            evaluation_criteria=q_data["evaluation_criteria"],
+                        )
+                        session.add(q_obj)
+                await session.commit()
+                logger.info("Questions seeded successfully!")
             else:
-                logger.info("Demo user and lessons already exist. Skipping seed.")
+                logger.info("Questions already seeded.")
 
 
 if __name__ == "__main__":
