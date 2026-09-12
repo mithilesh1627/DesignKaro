@@ -1347,7 +1347,11 @@ export default function LandingPage() {
           <div className="text-[11px] text-slate-500 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span>Mithilesh Chaurasiya</span>
+            <span>2026</span>
+              
+            
           </div>
+          
         </div>
       </footer>
 
