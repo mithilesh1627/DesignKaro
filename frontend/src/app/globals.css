@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  --background: #090d16;
+  --background: #050914;
   --foreground: #f8fafc;
 }
 
@@ -24,14 +24,143 @@ body {
   background: radial-gradient(circle at 50% 0%, rgba(14, 165, 233, 0.15) 0%, transparent 70%);
 }
 
-/* Custom technical scrollbar */
+.bg-tech-pattern {
+  background-color: #050914;
+  background-image: 
+    radial-gradient(rgba(56, 189, 248, 0.08) 1.2px, transparent 1.2px),
+    radial-gradient(ellipse at 50% 12%, rgba(6, 182, 212, 0.12) 0%, transparent 60%),
+    linear-gradient(to right, rgba(255, 255, 255, 0.01) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.01) 1px, transparent 1px);
+  background-size: 36px 36px, 100% 100%, 72px 72px, 72px 72px;
+}
+
+/* 3D Stage & Binder Fold Mechanics */
+.stage-perspective-viewport {
+  perspective: 1800px;
+  transform-style: preserve-3d;
+}
+
+.binder-fold-card {
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
+  transition: transform 0.75s cubic-bezier(0.2, 0.85, 0.25, 1), opacity 0.55s ease, filter 0.55s ease;
+  will-change: transform, opacity;
+}
+
+.binder-fold-card.fold-active {
+  transform: rotateY(0deg) translateZ(0) scale(1);
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  z-index: 20;
+}
+.binder-fold-card.fold-past {
+  transform: rotateY(-85deg) translateZ(-60px) scale(0.92);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 10;
+}
+.binder-fold-card.fold-future {
+  transform: rotateY(85deg) translateZ(-60px) scale(0.92);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* 3D Flip Card for Diagnostic on Fold 1 */
+.flipper-container {
+  perspective: 1200px;
+}
+.flipper-inner {
+  transition: transform 0.7s cubic-bezier(0.4, 0.2, 0.2, 1);
+  transform-style: preserve-3d;
+}
+.flipper-flipped {
+  transform: rotateY(180deg);
+}
+.flipper-front, .flipper-back {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.flipper-back {
+  transform: rotateY(180deg);
+}
+
+.zen-bento-card {
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 16px 36px -12px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: all 0.3s ease;
+}
+.zen-bento-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(56, 189, 248, 0.3);
+  transform: translateY(-2px);
+}
+
+.zen-core-card {
+  background: linear-gradient(135deg, rgba(15, 27, 51, 0.85), rgba(7, 13, 26, 0.95));
+  backdrop-filter: blur(30px);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.cyber-core-glow {
+  box-shadow: 0 0 70px 15px rgba(6, 182, 212, 0.16), inset 0 0 35px rgba(56, 189, 248, 0.12);
+}
+
+@keyframes flowLine {
+  0% { stroke-dashoffset: 60; }
+  100% { stroke-dashoffset: 0; }
+}
+
+.traffic-flow {
+  stroke-dasharray: 6, 6;
+  animation: flowLine 1s linear infinite;
+}
+.traffic-flow-fast {
+  stroke-dasharray: 4, 4;
+  animation: flowLine 0.65s linear infinite;
+}
+.traffic-flow-reverse {
+  stroke-dasharray: 5, 5;
+  animation: flowLine 0.8s linear infinite reverse;
+}
+
+.text-gradient-scale {
+  background: linear-gradient(120deg, #38bdf8 0%, #818cf8 60%, #c084fc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.text-glow {
+  text-shadow: 0 0 50px rgba(56, 189, 248, 0.35);
+}
+
+/* Custom thin scrollbars for overflowing containers */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(11, 19, 36, 0.5);
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(56, 189, 248, 0.2);
+  border-radius: 3px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(56, 189, 248, 0.4);
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #090d16;
+  background: #050914;
 }
 
 ::-webkit-scrollbar-thumb {
