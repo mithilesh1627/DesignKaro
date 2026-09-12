@@ -1,14 +1,129 @@
-import React from "react";
+"use client";
+
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { FileCheck2, ArrowLeft, ShieldCheck, AlertTriangle } from "lucide-react";
+import {
+  FileCheck2,
+  ArrowLeft,
+  ShieldCheck,
+  AlertTriangle,
+  CheckCircle2,
+  Award,
+  Zap,
+  TrendingUp,
+  RotateCcw,
+  Download,
+  Loader2,
+  Layers,
+  ArrowRight,
+  ExternalLink,
+} from "lucide-react";
 import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
 
+interface DimensionScore {
+  name: string;
+  score: number;
+  verdict: string;
+  analysis: string;
+}
+
+interface ReviewResult {
+  overall_score: number;
+  grade: string;
+  radar_scores: DimensionScore[];
+  strengths: string[];
+  critical_vulnerabilities: string[];
+  rule_violations: Array<{
+    rule_id: string;
+    rule_name: string;
+    severity: string;
+    message: string;
+    remediation: string;
+  }>;
+  actionable_remediation_plan: string[];
+  executive_summary: string;
+}
+
 export default function ReviewPage() {
+  const [review, setReview] = useState<ReviewResult | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [selectedPreset, setSelectedPreset] = useState<string>("tinyurl");
+
+  const runEvaluation = async (presetKey: string) => {
+    try {
+      setIsLoading(true);
+
+      const sampleGraphs: Record<string, any> = {
+        tinyurl: {
+          title: "TinyURL Distributed Service",
+          scale_metadata: { read_qps: 25000, write_qps: 500 },
+          graph_data: {
+            nodes: [
+              { id: "c1", type: "client", label: "Clients", properties: { replicas: 1 } },
+              { id: "gw1", type: "gateway", label: "Envoy Gateway", properties: { replicas: 2 } },
+              { id: "s1", type: "service", label: "Redirect Service", properties: { replicas: 4 } },
+              { id: "cache1", type: "cache", label: "Redis LRU", properties: { replicas: 2 } },
+              { id: "db1", type: "relational_db", label: "Postgres Primary", properties: { replicas: 2 } },
+              { id: "q1", type: "queue", label: "Kafka Telemetry", properties: { replicas: 3 } },
+              { id: "w1", type: "service", label: "Analytics Worker", properties: { replicas: 2 } },
+            ],
+            edges: [
+              { id: "e1", source: "c1", target: "gw1" },
+              { id: "e2", source: "gw1", target: "s1" },
+              { id: "e3", source: "s1", target: "cache1" },
+              { id: "e4", source: "s1", target: "db1" },
+              { id: "e5", source: "s1", target: "q1" },
+              { id: "e6", source: "q1", target: "w1" },
+              { id: "e7", source: "w1", target: "db1" },
+            ],
+          },
+        },
+        monolith: {
+          title: "Single Instance Monolith (High SPOF)",
+          scale_metadata: { read_qps: 10000 },
+          graph_data: {
+            nodes: [
+              { id: "c1", type: "client", label: "Direct Clients", properties: { replicas: 1 } },
+              { id: "s1", type: "service", label: "Monolith Server", properties: { replicas: 1 } },
+              { id: "db1", type: "relational_db", label: "Single MySQL", properties: { replicas: 1 } },
+            ],
+            edges: [
+              { id: "e1", source: "c1", target: "s1" },
+              { id: "e2", source: "s1", target: "db1" },
+            ],
+          },
+        },
+      };
+
+      const payload = sampleGraphs[presetKey] || sampleGraphs.tinyurl;
+
+      const res = await fetch("http://127.0.0.1:8000/api/v1/review/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setReview(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch architecture review:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    runEvaluation(selectedPreset);
+  }, [selectedPreset]);
+
   return (
     <>
       <Navigation />
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        {/* Breadcrumb */}
         <Link
           href="/"
           className="inline-flex items-center gap-1.5 text-xs font-mono text-slate-400 hover:text-sky-400 mb-6 transition-colors"
@@ -17,86 +132,235 @@ export default function ReviewPage() {
           <span>Back to Home</span>
         </Link>
 
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/30">
-            <FileCheck2 className="h-6 w-6" />
-          </div>
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-white">AI Architecture Review &amp; Rule Engine</h1>
-            <p className="text-xs text-slate-400 font-mono">
-              Deterministic Static Graph Analysis + Socratic Staff Engineer Review
+            <div className="flex items-center gap-2 text-xs font-mono text-sky-400 mb-1">
+              <Award className="h-4 w-4" />
+              <span>PHASE 9: AI ARCHITECTURE REVIEW</span>
+            </div>
+            <h1 className="text-3xl font-extrabold text-white tracking-tight">
+              9-Dimension Architecture Review
+            </h1>
+            <p className="text-sm text-slate-400 mt-1">
+              Automated Staff-level architectural evaluation across scalability, fault tolerance, latency, and cost efficiency.
             </p>
           </div>
+
+          <div className="flex items-center gap-3">
+            {/* Preset Toggle */}
+            <div className="flex items-center gap-1 p-1 rounded-lg bg-surface-900 border border-slate-800 text-xs font-mono">
+              <span className="text-slate-500 px-2">Preset:</span>
+              <button
+                onClick={() => setSelectedPreset("tinyurl")}
+                className={`px-3 py-1 rounded transition-colors ${
+                  selectedPreset === "tinyurl"
+                    ? "bg-sky-500 text-slate-950 font-bold"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                Distributed HA
+              </button>
+              <button
+                onClick={() => setSelectedPreset("monolith")}
+                className={`px-3 py-1 rounded transition-colors ${
+                  selectedPreset === "monolith"
+                    ? "bg-rose-500 text-white font-bold"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                SPOF Anti-Pattern
+              </button>
+            </div>
+
+            <Link
+              href="/design"
+              className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors border border-slate-700"
+            >
+              <Layers className="h-3.5 w-3.5" />
+              <span>Open in Canvas</span>
+            </Link>
+          </div>
         </div>
 
-        <div className="mt-8 rounded-xl border border-slate-800 bg-surface-900/60 p-6">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-6">
-            <div className="flex items-center gap-2 text-xs font-mono text-sky-400">
-              <ShieldCheck className="h-4 w-4" />
-              <span>MODULE SPECIFICATION: PHASE 6 &amp; 9 (VALIDATION &amp; REVIEW ENGINE)</span>
-            </div>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400">
-              Deterministic Rules
-            </span>
+        {/* Content */}
+        {isLoading ? (
+          <div className="py-24 text-center">
+            <Loader2 className="h-8 w-8 text-sky-400 animate-spin mx-auto mb-3" />
+            <p className="text-sm font-mono text-slate-400">Compiling 9-dimension review scorecard...</p>
           </div>
-
-          <h3 className="text-sm font-bold text-white mb-3 font-mono">
-            Deterministic Rule Catalog (Non-LLM Static Verification)
-          </h3>
-
-          <div className="space-y-3">
-            {[
-              {
-                id: "RULE-SPOF-01",
-                rule: "SINGLE_POINT_OF_FAILURE",
-                severity: "CRITICAL",
-                desc: "Database or service node has no replicas or failover targets while receiving production traffic.",
-              },
-              {
-                id: "RULE-CACHE-02",
-                rule: "MISSING_CACHE_LAYER",
-                severity: "WARNING",
-                desc: "Read-heavy workload (>85% reads) queries persistent database directly without in-memory cache.",
-              },
-              {
-                id: "RULE-QUEUE-03",
-                rule: "UNBOUNDED_ASYNC_QUEUE",
-                severity: "WARNING",
-                desc: "Asynchronous producer/consumer queue has no TTL or max depth policy, risking memory overflow.",
-              },
-              {
-                id: "RULE-TIME-04",
-                rule: "MISSING_TIMEOUT_AND_RETRY",
-                severity: "INFO",
-                desc: "Inter-service RPC connection lacks explicit client timeout and exponential backoff configuration.",
-              },
-            ].map((r) => (
-              <div
-                key={r.id}
-                className="p-4 rounded-lg border border-slate-800 bg-slate-950/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-              >
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-mono font-bold text-sky-400">{r.rule}</span>
-                    <span className="text-[10px] font-mono text-slate-500">({r.id})</span>
-                  </div>
-                  <p className="text-xs text-slate-400">{r.desc}</p>
+        ) : review ? (
+          <div className="space-y-8">
+            {/* Executive Summary Card */}
+            <div className="p-6 rounded-2xl bg-surface-900/80 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl">
+              <div className="space-y-2 flex-1">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-xs font-mono font-extrabold uppercase px-2.5 py-0.5 rounded border ${
+                      review.overall_score >= 85
+                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                        : review.overall_score >= 65
+                        ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                        : "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                    }`}
+                  >
+                    Grade: {review.grade}
+                  </span>
+                  <span className="text-xs font-mono text-slate-500">
+                    Deterministic Scorecard
+                  </span>
                 </div>
-                <span
-                  className={`self-start sm:self-center text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
-                    r.severity === "CRITICAL"
-                      ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
-                      : r.severity === "WARNING"
-                      ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
-                      : "bg-sky-500/10 text-sky-400 border-sky-500/30"
+                <h2 className="text-xl font-bold text-white">
+                  Executive Architectural Assessment
+                </h2>
+                <p className="text-sm text-slate-300 leading-relaxed max-w-3xl">
+                  {review.executive_summary}
+                </p>
+              </div>
+
+              {/* Score Gauge */}
+              <div className="flex flex-col items-center justify-center p-6 rounded-xl bg-slate-950 border border-slate-800 min-w-[180px] text-center shrink-0">
+                <div className="text-[11px] font-mono text-slate-500 uppercase tracking-wider mb-1">
+                  Overall Health
+                </div>
+                <div
+                  className={`text-4xl font-extrabold font-mono ${
+                    review.overall_score >= 85
+                      ? "text-emerald-400"
+                      : review.overall_score >= 65
+                      ? "text-amber-400"
+                      : "text-rose-400"
                   }`}
                 >
-                  {r.severity}
-                </span>
+                  {review.overall_score}
+                  <span className="text-xl text-slate-600">/100</span>
+                </div>
+                <div className="text-[10px] font-mono text-slate-400 mt-1">
+                  Across 9 Dimensions
+                </div>
               </div>
-            ))}
+            </div>
+
+            {/* 9 Dimensions Breakdown Grid */}
+            <div>
+              <h3 className="text-base font-bold text-white mb-4 flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-sky-400" />
+                <span>The 9 Architectural Dimensions</span>
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {review.radar_scores.map((dim) => (
+                  <div
+                    key={dim.name}
+                    className="p-4 rounded-xl bg-surface-900/60 border border-slate-800/80 flex flex-col justify-between space-y-3"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-bold text-white">{dim.name}</span>
+                        <span
+                          className={`text-xs font-mono font-bold ${
+                            dim.score >= 80
+                              ? "text-emerald-400"
+                              : dim.score >= 65
+                              ? "text-amber-400"
+                              : "text-rose-400"
+                          }`}
+                        >
+                          {dim.score}%
+                        </span>
+                      </div>
+
+                      {/* Progress Bar */}
+                      <div className="w-full h-1.5 rounded-full bg-slate-950 overflow-hidden mb-2">
+                        <div
+                          className={`h-full rounded-full ${
+                            dim.score >= 80
+                              ? "bg-emerald-500"
+                              : dim.score >= 65
+                              ? "bg-amber-500"
+                              : "bg-rose-500"
+                          }`}
+                          style={{ width: `${dim.score}%` }}
+                        />
+                      </div>
+
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        {dim.analysis}
+                      </p>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between text-[10px] font-mono">
+                      <span className="text-slate-500">Verdict:</span>
+                      <span className="text-slate-300 font-semibold">{dim.verdict}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Strengths & Critical Vulnerabilities */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Strengths */}
+              <div className="p-5 rounded-xl bg-surface-900/60 border border-slate-800 space-y-3">
+                <div className="flex items-center gap-2 text-xs font-mono font-bold text-emerald-400">
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>CORE ARCHITECTURAL STRENGTHS</span>
+                </div>
+                <div className="space-y-2">
+                  {review.strengths.map((str, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3 rounded-lg bg-slate-950/60 border border-slate-800/80 text-xs text-slate-300 flex items-center gap-2"
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                      <span>{str}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Vulnerabilities */}
+              <div className="p-5 rounded-xl bg-surface-900/60 border border-slate-800 space-y-3">
+                <div className="flex items-center gap-2 text-xs font-mono font-bold text-rose-400">
+                  <AlertTriangle className="h-4 w-4" />
+                  <span>CRITICAL VULNERABILITIES</span>
+                </div>
+                <div className="space-y-2">
+                  {review.critical_vulnerabilities.map((vuln, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3 rounded-lg bg-rose-500/5 border border-rose-500/20 text-xs text-rose-300 flex items-center gap-2"
+                    >
+                      <AlertTriangle className="h-3.5 w-3.5 text-rose-400 shrink-0" />
+                      <span>{vuln}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Actionable Remediation Plan */}
+            <div className="p-6 rounded-xl bg-surface-900/60 border border-slate-800 space-y-4">
+              <div className="flex items-center gap-2 text-xs font-mono font-bold text-sky-400">
+                <ShieldCheck className="h-4 w-4" />
+                <span>ACTIONABLE REMEDIATION ROADMAP (STAFF RECOMMENDATIONS)</span>
+              </div>
+              <div className="space-y-2.5">
+                {review.actionable_remediation_plan.map((step, idx) => (
+                  <div
+                    key={idx}
+                    className="p-3 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-300 flex items-start gap-3"
+                  >
+                    <span className="font-mono text-sky-400 font-bold shrink-0">
+                      Step {idx + 1}:
+                    </span>
+                    <span className="leading-relaxed">{step}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
+        ) : null}
       </main>
       <Footer />
     </>
