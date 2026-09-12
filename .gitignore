@@ -1,0 +1,33 @@
+# Virtual environment
+designkaro_env/
+.venv/
+env/
+venv/
+
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Local SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Test & Lint caches
+.pytest_cache/
+.ruff_cache/
+
+# Node & Next.js
+frontend/node_modules/
+frontend/.next/
