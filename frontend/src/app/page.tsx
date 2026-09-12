@@ -1338,39 +1338,15 @@ export default function LandingPage() {
               </span>
             </div>
             <p className="text-[11px] text-slate-500">
-              Socho. Design Karo. Scale Karo. • Interactive Architecture &amp; System Design Simulator
+              Socho. Design Karo. Scale Karo.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-6 text-slate-400">
-            <Link className="hover:text-cyan-400 transition" href="/learn">
-              Curriculum
-            </Link>
-            <Link className="hover:text-cyan-400 transition" href="/practice">
-              50+ Problems
-            </Link>
-            <Link className="hover:text-cyan-400 transition" href="/design">
-              Interactive Canvas
-            </Link>
-            <Link className="hover:text-cyan-400 transition" href="/simulate">
-              Chaos Simulator
-            </Link>
-            <Link className="hover:text-cyan-400 transition" href="/interview">
-              Mock Interview
-            </Link>
-            <a
-              className="hover:text-cyan-400 transition"
-              href="http://127.0.0.1:8000/docs"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              FastAPI Docs
-            </a>
-          </div>
+      
 
           <div className="text-[11px] text-slate-500 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>All Systems Operational</span>
+            <span>Mithilesh Chaurasiya</span>
           </div>
         </div>
       </footer>
