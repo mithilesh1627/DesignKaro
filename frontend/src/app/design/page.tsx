@@ -46,6 +46,7 @@ import {
 } from "lucide-react";
 import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
+import { AuthModal } from "@/components/AuthModal";
 import { useAuthStore } from "@/lib/authStore";
 
 // Component Category Definitions
@@ -171,7 +172,8 @@ function DesignCanvasContent() {
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
 
-  const { accessToken, isAuthenticated } = useAuthStore();
+  const { accessToken, isAuthenticated, user } = useAuthStore();
+  const [authModalOpen, setAuthModalOpen] = useState(false);
 
   const nodeTypes = useMemo(() => ({ custom: ArchitectureNode }), []);
 
@@ -375,6 +377,43 @@ function DesignCanvasContent() {
       setSelectedNode(null);
     }
   };
+
+  if (!isAuthenticated || !user) {
+    return (
+      <div className="min-h-screen bg-[#050914] text-slate-200 flex flex-col justify-between">
+        <Navigation />
+        <main className="flex-1 flex items-center justify-center p-4">
+          <div className="max-w-md w-full p-8 sm:p-10 rounded-3xl bg-slate-900/90 border border-white/[0.1] text-center shadow-2xl backdrop-blur-2xl">
+            <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center justify-center mx-auto mb-6 shadow-xl shadow-cyan-500/10">
+              <ShieldCheck className="w-8 h-8" />
+            </div>
+            <h2 className="text-2xl font-bold font-display text-white mb-2 tracking-tight">
+              Sign-In Required
+            </h2>
+            <p className="text-xs text-slate-400 mb-8 leading-relaxed font-light">
+              You must be logged in to access the Interactive System Design Canvas, build architecture topologies, and run live traffic simulations.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => setAuthModalOpen(true)}
+                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 via-sky-500 to-indigo-500 hover:from-cyan-400 hover:to-indigo-400 text-slate-950 font-bold text-xs font-mono transition shadow-xl shadow-cyan-500/25 active:scale-95"
+              >
+                Sign In / Sign Up to Continue
+              </button>
+              <Link
+                href="/"
+                className="py-2 text-xs text-slate-500 hover:text-slate-300 font-mono transition"
+              >
+                ← Return to Home
+              </Link>
+            </div>
+          </div>
+        </main>
+        <Footer />
+        <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
+      </div>
+    );
+  }
 
   return (
     <>

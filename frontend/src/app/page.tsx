@@ -647,13 +647,19 @@ export default function LandingPage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <Link
-                href="/design"
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs font-mono transition shadow-lg shadow-cyan-500/20"
+              <button
+                onClick={() => {
+                  if (isAuthenticated && user) {
+                    window.location.href = "/design";
+                  } else {
+                    setAuthModalOpen(true);
+                  }
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs font-mono transition shadow-lg shadow-cyan-500/20 active:scale-95"
               >
                 <span>Launch Full Canvas</span>
                 <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
+              </button>
             </div>
           </div>
 
@@ -1184,20 +1190,32 @@ export default function LandingPage() {
                 Step-by-step interactive scenarios tested against high QPS traffic and chaos conditions.
               </p>
             </div>
-            <Link
-              href="/practice"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-mono text-xs font-bold transition"
+            <button
+              onClick={() => {
+                if (isAuthenticated && user) {
+                  window.location.href = "/practice";
+                } else {
+                  setAuthModalOpen(true);
+                }
+              }}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-mono text-xs font-bold transition active:scale-95"
             >
               <span>View All 50+ Scenarios</span>
               <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
+            </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Problem 1 */}
-            <Link
-              href="/practice"
-              className="zen-bento-card p-5 rounded-2xl group hover:border-cyan-500/40 transition flex flex-col justify-between"
+            <div
+              onClick={() => {
+                if (isAuthenticated && user) {
+                  window.location.href = "/practice";
+                } else {
+                  setAuthModalOpen(true);
+                }
+              }}
+              className="zen-bento-card p-5 rounded-2xl group hover:border-cyan-500/40 transition flex flex-col justify-between cursor-pointer"
             >
               <div>
                 <div className="flex items-center justify-between pb-2 mb-2 text-[10px] font-mono">
@@ -1215,12 +1233,18 @@ export default function LandingPage() {
                 <span>Start Practice</span>
                 <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
               </div>
-            </Link>
+            </div>
 
             {/* Problem 2 */}
-            <Link
-              href="/practice"
-              className="zen-bento-card p-5 rounded-2xl group hover:border-sky-500/40 transition flex flex-col justify-between"
+            <div
+              onClick={() => {
+                if (isAuthenticated && user) {
+                  window.location.href = "/practice";
+                } else {
+                  setAuthModalOpen(true);
+                }
+              }}
+              className="zen-bento-card p-5 rounded-2xl group hover:border-sky-500/40 transition flex flex-col justify-between cursor-pointer"
             >
               <div>
                 <div className="flex items-center justify-between pb-2 mb-2 text-[10px] font-mono">
@@ -1238,12 +1262,18 @@ export default function LandingPage() {
                 <span>Start Practice</span>
                 <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
               </div>
-            </Link>
+            </div>
 
             {/* Problem 3 */}
-            <Link
-              href="/practice"
-              className="zen-bento-card p-5 rounded-2xl group hover:border-indigo-500/40 transition flex flex-col justify-between"
+            <div
+              onClick={() => {
+                if (isAuthenticated && user) {
+                  window.location.href = "/practice";
+                } else {
+                  setAuthModalOpen(true);
+                }
+              }}
+              className="zen-bento-card p-5 rounded-2xl group hover:border-indigo-500/40 transition flex flex-col justify-between cursor-pointer"
             >
               <div>
                 <div className="flex items-center justify-between pb-2 mb-2 text-[10px] font-mono">
@@ -1261,12 +1291,18 @@ export default function LandingPage() {
                 <span>Start Practice</span>
                 <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
               </div>
-            </Link>
+            </div>
 
             {/* Problem 4 */}
-            <Link
-              href="/practice"
-              className="zen-bento-card p-5 rounded-2xl group hover:border-amber-500/40 transition flex flex-col justify-between"
+            <div
+              onClick={() => {
+                if (isAuthenticated && user) {
+                  window.location.href = "/practice";
+                } else {
+                  setAuthModalOpen(true);
+                }
+              }}
+              className="zen-bento-card p-5 rounded-2xl group hover:border-amber-500/40 transition flex flex-col justify-between cursor-pointer"
             >
               <div>
                 <div className="flex items-center justify-between pb-2 mb-2 text-[10px] font-mono">
@@ -1284,7 +1320,7 @@ export default function LandingPage() {
                 <span>Start Practice</span>
                 <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
               </div>
-            </Link>
+            </div>
           </div>
         </div>
       </section>
