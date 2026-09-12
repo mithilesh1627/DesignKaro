@@ -58,7 +58,6 @@ interface Ripple {
 interface ArchContext {
   id: string;
   name: string;
-  icon: string;
   description: string;
   telemetry: string;
   packetColors: string[];
@@ -91,7 +90,6 @@ export default function LandingPage() {
       {
         id: "global",
         name: "Global Distributed Mesh",
-        icon: "🌐",
         description: "Multi-region active-active topology with edge caching and read replicas",
         telemetry: "280,000 QPS • p99 Latency: 4.2ms • 99.999% SLA",
         packetColors: ["#38bdf8", "#06b6d4", "#818cf8"],
@@ -101,7 +99,6 @@ export default function LandingPage() {
       {
         id: "flashsale",
         name: "Flash Sale Traffic Surge",
-        icon: "⚡",
         description: "10x QPS spike absorbed by Redis cache shields and Kafka backpressure",
         telemetry: "1,450,000 QPS • Redis Hit: 99.6% • Kafka: 2.8M msg/s",
         packetColors: ["#f43f5e", "#f59e0b", "#fbbf24"],
@@ -111,7 +108,6 @@ export default function LandingPage() {
       {
         id: "eventstream",
         name: "Kafka Event-Driven Fanout",
-        icon: "📡",
         description: "Real-time pub/sub event stream with idempotent worker consumer groups",
         telemetry: "4,200,000 Events/sec • Partition Count: 64 • 0ms Lag",
         packetColors: ["#f59e0b", "#10b981", "#818cf8"],
@@ -121,7 +117,6 @@ export default function LandingPage() {
       {
         id: "aisearch",
         name: "AI & Vector Search",
-        icon: "🧠",
         description: "High-dimensional embeddings retrieval with HNSW cosine similarity index",
         telemetry: "Cosine Index: 1536-dim • Vector DB: 18ms p95 • Hybrid RAG",
         packetColors: ["#c084fc", "#a855f7", "#38bdf8"],
@@ -434,51 +429,53 @@ export default function LandingPage() {
             </div>
           </Link>
 
-          {/* Quick Route Nav */}
-          <nav className="hidden lg:flex items-center gap-1 font-mono text-xs text-slate-400">
-            <Link
-              href="/learn"
-              className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
-            >
-              LEARN
-            </Link>
-            <Link
-              href="/practice"
-              className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
-            >
-              PRACTICE
-            </Link>
-            <Link
-              href="/design"
-              className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
-            >
-              CANVAS
-            </Link>
-            <a
-              href="#simulation-arena"
-              className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
-            >
-              SIMULATE
-            </a>
-            <a
-              href="#invariants"
-              className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
-            >
-              INVARIANTS
-            </a>
-            <Link
-              href="/interview"
-              className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
-            >
-              INTERVIEW
-            </Link>
-            <Link
-              href="/progress"
-              className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
-            >
-              PROGRESS
-            </Link>
-          </nav>
+          {/* Quick Route Nav - Available only once user is logged in / signed in */}
+          {isAuthenticated && user && (
+            <nav className="hidden lg:flex items-center gap-1 font-mono text-xs text-slate-400">
+              <Link
+                href="/learn"
+                className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
+              >
+                LEARN
+              </Link>
+              <Link
+                href="/practice"
+                className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
+              >
+                PRACTICE
+              </Link>
+              <Link
+                href="/design"
+                className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
+              >
+                CANVAS
+              </Link>
+              <a
+                href="#simulation-arena"
+                className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
+              >
+                SIMULATE
+              </a>
+              <a
+                href="#invariants"
+                className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
+              >
+                INVARIANTS
+              </a>
+              <Link
+                href="/interview"
+                className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
+              >
+                INTERVIEW
+              </Link>
+              <Link
+                href="/progress"
+                className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
+              >
+                PROGRESS
+              </Link>
+            </nav>
+          )}
         </div>
 
         {/* Auth & CTA */}
@@ -546,22 +543,34 @@ export default function LandingPage() {
 
           {/* Centered Action Buttons */}
           <div className="flex flex-wrap items-center justify-center gap-4 mt-2">
-            <Link
-              href="/design"
+            <button
+              onClick={() => {
+                if (isAuthenticated && user) {
+                  window.location.href = "/design";
+                } else {
+                  setAuthModalOpen(true);
+                }
+              }}
               className="inline-flex items-center gap-2.5 px-8 py-4 rounded-2xl bg-gradient-to-r from-cyan-400 via-sky-400 to-indigo-500 hover:from-cyan-300 hover:to-indigo-400 text-slate-950 font-extrabold text-sm sm:text-base tracking-wide transition-all duration-200 shadow-2xl shadow-cyan-500/30 hover:shadow-cyan-400/50 hover:scale-105 active:scale-95"
             >
               <Zap className="w-5 h-5 fill-current text-slate-950" />
               <span>Start System Design</span>
               <ArrowRight className="w-4 h-4 text-slate-950" />
-            </Link>
+            </button>
 
-            <Link
-              href="/practice"
+            <button
+              onClick={() => {
+                if (isAuthenticated && user) {
+                  window.location.href = "/practice";
+                } else {
+                  setAuthModalOpen(true);
+                }
+              }}
               className="inline-flex items-center gap-2.5 px-7 py-4 rounded-2xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.15] text-white font-semibold text-sm sm:text-base transition-all duration-200 backdrop-blur-xl hover:scale-105 active:scale-95"
             >
               <Compass className="w-5 h-5 text-cyan-400" />
               <span>Practice FAANG Problems</span>
-            </Link>
+            </button>
 
             <a
               href="#simulation-arena"
@@ -574,8 +583,7 @@ export default function LandingPage() {
 
           {/* Architectural Background Context Selector */}
           <div className="mt-8 sm:mt-10 flex flex-col items-center gap-2.5">
-            <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+            <div className="flex items-center justify-center text-xs font-mono text-slate-400">
               <span className="text-[11px] uppercase tracking-wider text-slate-400">
                 Architecture Background Context:
               </span>
@@ -586,21 +594,19 @@ export default function LandingPage() {
                 <button
                   key={ctx.id}
                   onClick={() => setActiveContext(ctx.id)}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-mono transition-all duration-200 flex items-center gap-2 ${
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-mono transition-all duration-200 flex items-center justify-center ${
                     activeContext === ctx.id
                       ? "bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 shadow-[0_0_12px_rgba(6,182,212,0.3)] font-bold scale-105"
                       : "text-slate-400 hover:text-white hover:bg-white/[0.05] border border-transparent"
                   }`}
                 >
-                  <span>{ctx.icon}</span>
                   <span>{ctx.name}</span>
                 </button>
               ))}
             </div>
 
             {/* Dynamic Telemetry Pill */}
-            <div className="text-[11px] font-mono text-cyan-400/90 bg-cyan-950/60 px-4 py-1.5 rounded-full border border-cyan-800/40 mt-1 flex items-center gap-2 shadow-lg">
-              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+            <div className="text-[11px] font-mono text-cyan-400/90 bg-cyan-950/60 px-4 py-1.5 rounded-full border border-cyan-800/40 mt-1 flex items-center justify-center shadow-lg">
               <span>{activeContextData.telemetry}</span>
             </div>
           </div>

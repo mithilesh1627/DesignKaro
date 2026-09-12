@@ -64,9 +64,6 @@ export const Navigation: React.FC<NavigationProps> = ({ onOpenDiagnostic }) => {
                 <span className="font-bold text-lg tracking-tight text-white group-hover:text-sky-400 transition-colors">
                   DesignKaro
                 </span>
-                <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-mono font-medium text-sky-400 border border-sky-500/20">
-                  v0.1
-                </span>
               </div>
               <p className="hidden md:block text-[11px] text-slate-400 font-mono tracking-tight">
                 Socho. Design Karo. Scale Karo.
@@ -76,31 +73,33 @@ export const Navigation: React.FC<NavigationProps> = ({ onOpenDiagnostic }) => {
         </div>
 
         {/* Desktop Primary Navigation */}
-        <nav className="hidden xl:flex items-center gap-1">
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const isActive = pathname === item.href;
-            return (
-              <Link
-                key={item.label}
-                href={item.href}
-                className={`relative flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono font-medium rounded-md transition-all ${
-                  isActive
-                    ? "bg-sky-500/15 text-sky-300 border border-sky-500/30 shadow-[0_0_12px_rgba(14,165,233,0.2)]"
-                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                <span>{item.label}</span>
-                {item.badge && (
-                  <span className="ml-1 text-[9px] px-1 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                    {item.badge}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
-        </nav>
+        {isAuthenticated && user && (
+          <nav className="hidden xl:flex items-center gap-1">
+            {NAV_ITEMS.map((item) => {
+              const Icon = item.icon;
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  className={`relative flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono font-medium rounded-md transition-all ${
+                    isActive
+                      ? "bg-sky-500/15 text-sky-300 border border-sky-500/30 shadow-[0_0_12px_rgba(14,165,233,0.2)]"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span>{item.label}</span>
+                  {item.badge && (
+                    <span className="ml-1 text-[9px] px-1 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                      {item.badge}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </nav>
+        )}
 
         {/* Right Action & Telemetry */}
         <div className="flex items-center gap-2.5">
@@ -166,27 +165,42 @@ export const Navigation: React.FC<NavigationProps> = ({ onOpenDiagnostic }) => {
       {/* Mobile Navigation Drawer */}
       {mobileOpen && (
         <div className="xl:hidden border-b border-slate-800 bg-surface-950/95 px-4 pt-2 pb-6 backdrop-blur-xl">
-          <div className="grid grid-cols-2 gap-2 pt-2">
-            {NAV_ITEMS.map((item) => {
-              const Icon = item.icon;
-              const isActive = pathname === item.href;
-              return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  onClick={() => setMobileOpen(false)}
-                  className={`flex items-center gap-2 px-3 py-2 text-xs font-mono rounded-md border ${
-                    isActive
-                      ? "bg-sky-500/15 border-sky-500/40 text-sky-300"
-                      : "border-slate-800 bg-slate-900/50 text-slate-400 hover:text-white"
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-          </div>
+          {isAuthenticated && user ? (
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              {NAV_ITEMS.map((item) => {
+                const Icon = item.icon;
+                const isActive = pathname === item.href;
+                return (
+                  <Link
+                    key={item.label}
+                    href={item.href}
+                    onClick={() => setMobileOpen(false)}
+                    className={`flex items-center gap-2 px-3 py-2 text-xs font-mono rounded-md border ${
+                      isActive
+                        ? "bg-sky-500/15 border-sky-500/40 text-sky-300"
+                        : "border-slate-800 bg-slate-900/50 text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="py-4 text-center">
+              <p className="text-xs text-slate-400 font-mono mb-3">Sign in to access platform navigation</p>
+              <button
+                onClick={() => {
+                  setMobileOpen(false);
+                  setAuthModalOpen(true);
+                }}
+                className="inline-flex items-center gap-2 text-xs font-bold px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-500 text-slate-950"
+              >
+                Sign In / Sign Up
+              </button>
+            </div>
+          )}
 
           {onOpenDiagnostic && (
             <div className="mt-4 pt-3 border-t border-slate-800">
