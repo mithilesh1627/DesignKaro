@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     VERSION: str = "0.1.0"
     TAGLINE: str = "Socho. Design Karo. Scale Karo."
     API_V1_STR: str = "/api/v1"
-    DEBUG: bool = True
+    DEBUG: bool = False
     ENVIRONMENT: str = "development"
 
     # CORS
@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     # Security
     SECRET_KEY: str = "super-secret-key-change-in-production-designkaro-2026"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
+
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def validate_secret_key(cls, v: str, info) -> str:
+        env = info.data.get("ENVIRONMENT", "development")
+        if env == "production" and ("change-in-production" in v or len(v) < 32):
+            raise ValueError("Insecure SECRET_KEY detected in production environment. A strong >=32 char secret is required.")
+        return v
 
     # Database
     DATABASE_URL: str = "sqlite+aiosqlite:///./designkaro.db"

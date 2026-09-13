@@ -5,219 +5,184 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Layers,
-  BookOpen,
-  Code2,
-  Cpu,
-  PlayCircle,
-  Users2,
-  FileCheck2,
-  TrendingUp,
+  ArrowRight,
   Menu,
   X,
-  Compass,
-  User as UserIcon,
-  LogOut,
 } from "lucide-react";
-import { HealthBadge } from "./HealthBadge";
 import { AuthModal } from "./AuthModal";
 import { useAuthStore } from "@/lib/authStore";
 
 interface NavItem {
   label: string;
   href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  badge?: string;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "HOME", href: "/", icon: Layers },
-  { label: "LEARN", href: "/learn", icon: BookOpen },
-  { label: "PRACTICE", href: "/practice", icon: Code2, badge: "50+ Labs" },
-  { label: "DESIGN", href: "/design", icon: Cpu, badge: "Canvas" },
-  { label: "SIMULATE", href: "/simulate", icon: PlayCircle },
-  { label: "INTERVIEW", href: "/interview", icon: Users2, badge: "AI" },
-  { label: "REVIEW", href: "/review", icon: FileCheck2 },
-  { label: "PROGRESS", href: "/progress", icon: TrendingUp },
+  { label: "LEARN", href: "/learn" },
+  { label: "PRACTICE", href: "/practice" },
+  { label: "CANVAS", href: "/design" },
+  { label: "SIMULATE", href: "/simulate" },
+  { label: "INTERVIEW", href: "/interview" },
+  { label: "REVIEW", href: "/review" },
+  { label: "PROGRESS", href: "/progress" },
 ];
 
 interface NavigationProps {
   onOpenDiagnostic?: () => void;
 }
 
-export const Navigation: React.FC<NavigationProps> = ({ onOpenDiagnostic }) => {
+export const Navigation: React.FC<NavigationProps> = () => {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const { user, isAuthenticated, logout } = useAuthStore();
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-slate-800/80 bg-surface-950/90 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+    <>
+      <header className="sticky top-0 inset-x-0 z-50 h-16 border-b border-white/[0.06] bg-slate-950/80 backdrop-blur-2xl px-4 sm:px-8 lg:px-10 flex items-center justify-between transition-colors">
         {/* Brand Logo & Tagline */}
         <div className="flex items-center gap-6">
-          <Link href="/" className="group flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-500/10 border border-sky-500/30 text-sky-400 group-hover:border-sky-400 group-hover:bg-sky-500/20 transition-colors">
-              <Layers className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-lg tracking-tight text-white group-hover:text-sky-400 transition-colors">
-                  DesignKaro
-                </span>
+          <Link href="/" className="flex items-center gap-3 group shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-indigo-600 p-[1px] shadow-lg shadow-cyan-500/15">
+              <div className="w-full h-full bg-[#050914] rounded-[10px] flex items-center justify-center">
+                <Layers className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform" />
               </div>
-              <p className="hidden md:block text-[11px] text-slate-400 font-mono tracking-tight">
+            </div>
+            <div className="flex flex-col">
+              <span className="text-lg font-bold tracking-tight text-white font-display">
+                Design<span className="text-cyan-400">Karo</span>
+              </span>
+              <span className="text-[10px] text-slate-400 font-light hidden sm:block tracking-wide">
                 Socho. Design Karo. Scale Karo.
-              </p>
+              </span>
             </div>
           </Link>
-        </div>
 
-        {/* Desktop Primary Navigation */}
-        {isAuthenticated && user && (
-          <nav className="hidden xl:flex items-center gap-1">
+          {/* Desktop Primary Navigation */}
+          <nav className="hidden lg:flex items-center gap-1 font-mono text-xs text-slate-400">
             {NAV_ITEMS.map((item) => {
-              const Icon = item.icon;
               const isActive = pathname === item.href;
               return (
                 <Link
                   key={item.label}
                   href={item.href}
-                  className={`relative flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono font-medium rounded-md transition-all ${
+                  className={`px-3 py-1.5 rounded-md transition-all ${
                     isActive
-                      ? "bg-sky-500/15 text-sky-300 border border-sky-500/30 shadow-[0_0_12px_rgba(14,165,233,0.2)]"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                      ? "text-cyan-300 bg-white/[0.08] font-semibold border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.15)]"
+                      : "hover:text-cyan-300 hover:bg-white/[0.04]"
                   }`}
                 >
-                  <Icon className="h-3.5 w-3.5" />
-                  <span>{item.label}</span>
-                  {item.badge && (
-                    <span className="ml-1 text-[9px] px-1 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                      {item.badge}
-                    </span>
-                  )}
+                  {item.label}
                 </Link>
               );
             })}
           </nav>
-        )}
+        </div>
 
-        {/* Right Action & Telemetry */}
-        <div className="flex items-center gap-2.5">
-          <HealthBadge />
-
-          {/* User Session or Sign In */}
+        {/* Right Actions & Auth */}
+        <div className="flex items-center gap-2.5 sm:gap-4">
+          {/* User Session or Sign In / Sign Up */}
           {isAuthenticated && user ? (
-            <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-lg border border-slate-800 bg-slate-900/80 text-xs font-mono">
-              <div className="flex items-center gap-1.5 text-sky-400">
-                <UserIcon className="h-3.5 w-3.5" />
-                <span className="font-semibold text-white">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-lg border border-white/[0.08] bg-white/[0.03] text-xs font-mono">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                <span className="text-cyan-300 font-semibold">
                   {user.profile?.username || user.email.split("@")[0]}
                 </span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-950/80 text-cyan-400 border border-cyan-800/50">
+                  {user.profile?.current_rank?.split(" ")[0] || "Architect"}
+                </span>
               </div>
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-500/10 text-sky-300 border border-sky-500/20">
-                {user.profile?.current_rank?.split(" ")[0] || "Architect"}
-              </span>
               <button
                 onClick={logout}
-                title="Log Out"
-                className="text-slate-400 hover:text-rose-400 p-0.5 transition-colors"
+                className="text-xs font-mono text-slate-400 hover:text-rose-400 px-3 py-1.5 rounded-lg hover:bg-white/[0.04] transition"
               >
-                <LogOut className="h-3.5 w-3.5" />
+                Sign Out
               </button>
             </div>
           ) : (
-            <button
-              onClick={() => setAuthModalOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 px-3 py-1.5 text-xs font-mono text-slate-200 transition-colors shadow-sm"
-            >
-              <UserIcon className="h-3.5 w-3.5 text-sky-400" />
-              <span>Sign In</span>
-            </button>
-          )}
-
-          {onOpenDiagnostic && (
-            <button
-              onClick={onOpenDiagnostic}
-              className="hidden sm:inline-flex items-center gap-1.5 rounded-md bg-sky-500 hover:bg-sky-400 px-3 py-1.5 text-xs font-semibold text-slate-950 transition-colors shadow-sm"
-            >
-              <Compass className="h-3.5 w-3.5" />
-              <span>Diagnostic</span>
-            </button>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <button
+                onClick={() => setAuthModalOpen(true)}
+                className="text-xs font-mono font-medium text-slate-400 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/[0.04] transition hidden sm:block"
+              >
+                Sign In
+              </button>
+              <button
+                onClick={() => setAuthModalOpen(true)}
+                className="inline-flex items-center gap-2 text-xs font-bold px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-500 hover:from-cyan-400 hover:to-sky-400 text-slate-950 transition duration-200 shadow-md shadow-cyan-500/20 active:scale-95"
+              >
+                <span>Sign Up</span>
+                <ArrowRight className="w-3.5 h-3.5 text-slate-950" />
+              </button>
+            </div>
           )}
 
           {/* Mobile Menu Toggle */}
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
-            className="xl:hidden p-2 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="lg:hidden p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.04] transition-colors"
             aria-label="Toggle Navigation"
           >
             {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
-      </div>
 
-      {/* Auth Modal */}
-      <AuthModal
-        isOpen={authModalOpen}
-        onClose={() => setAuthModalOpen(false)}
-      />
-
-      {/* Mobile Navigation Drawer */}
-      {mobileOpen && (
-        <div className="xl:hidden border-b border-slate-800 bg-surface-950/95 px-4 pt-2 pb-6 backdrop-blur-xl">
-          {isAuthenticated && user ? (
-            <div className="grid grid-cols-2 gap-2 pt-2">
+        {/* Mobile Navigation Dropdown */}
+        {mobileOpen && (
+          <div className="lg:hidden absolute top-16 inset-x-0 border-b border-white/[0.08] bg-[#050914]/95 px-6 pt-3 pb-6 backdrop-blur-2xl shadow-2xl space-y-3 z-50">
+            <div className="grid grid-cols-2 gap-2 pt-1">
               {NAV_ITEMS.map((item) => {
-                const Icon = item.icon;
                 const isActive = pathname === item.href;
                 return (
                   <Link
                     key={item.label}
                     href={item.href}
                     onClick={() => setMobileOpen(false)}
-                    className={`flex items-center gap-2 px-3 py-2 text-xs font-mono rounded-md border ${
+                    className={`flex items-center gap-2 px-3 py-2 text-xs font-mono rounded-lg border transition-all ${
                       isActive
-                        ? "bg-sky-500/15 border-sky-500/40 text-sky-300"
-                        : "border-slate-800 bg-slate-900/50 text-slate-400 hover:text-white"
+                        ? "bg-white/[0.08] border-cyan-500/40 text-cyan-300 font-semibold shadow-[0_0_12px_rgba(6,182,212,0.15)]"
+                        : "border-white/[0.04] bg-white/[0.02] text-slate-400 hover:text-white hover:bg-white/[0.06]"
                     }`}
                   >
-                    <Icon className="h-4 w-4" />
                     <span>{item.label}</span>
                   </Link>
                 );
               })}
             </div>
-          ) : (
-            <div className="py-4 text-center">
-              <p className="text-xs text-slate-400 font-mono mb-3">Sign in to access platform navigation</p>
-              <button
-                onClick={() => {
-                  setMobileOpen(false);
-                  setAuthModalOpen(true);
-                }}
-                className="inline-flex items-center gap-2 text-xs font-bold px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-500 text-slate-950"
-              >
-                Sign In / Sign Up
-              </button>
-            </div>
-          )}
 
-          {onOpenDiagnostic && (
-            <div className="mt-4 pt-3 border-t border-slate-800">
-              <button
-                onClick={() => {
-                  setMobileOpen(false);
-                  onOpenDiagnostic();
-                }}
-                className="w-full flex items-center justify-center gap-2 rounded-md bg-sky-500 py-2 text-xs font-semibold text-slate-950"
-              >
-                <Compass className="h-4 w-4" />
-                <span>Take Quick Diagnostic</span>
-              </button>
+            <div className="pt-3 border-t border-white/[0.08] flex items-center justify-between gap-3">
+              {!isAuthenticated ? (
+                <button
+                  onClick={() => {
+                    setMobileOpen(false);
+                    setAuthModalOpen(true);
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-500 text-xs font-bold font-mono text-slate-950 text-center shadow-md shadow-cyan-500/20"
+                >
+                  Sign In / Sign Up
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    setMobileOpen(false);
+                    logout();
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-xs font-mono text-rose-400 text-center"
+                >
+                  Sign Out
+                </button>
+              )}
             </div>
-          )}
-        </div>
-      )}
-    </header>
+          </div>
+        )}
+      </header>
+
+      {/* Authentication Modal */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+      />
+    </>
   );
 };

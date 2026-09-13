@@ -44,17 +44,23 @@ async def get_developer_dashboard(
     designs_count = 0
     interviews_done = 0
     recent_designs: list[DesignSummary] = []
-    user_rank = "Principal Architect"
-    user_target = "Staff Systems Architect"
-    xp = 1250
-    streak = 7
+    user_rank = "Guest Engineer"
+    user_target = "Distributed Systems Engineer"
+    xp = 0
+    streak = 0
 
     if current_user:
+        user_rank = "Senior Systems Engineer"
+        user_target = "Staff Systems Architect"
+        xp = 500
+        streak = 1
         # Load user profile data
         if current_user.profile:
-            user_rank = current_user.profile.current_rank
+            user_rank = current_user.profile.current_rank or "Senior Systems Engineer"
+            user_target = current_user.profile.target_role or "Staff Systems Architect"
             xp = current_user.profile.target_qps // 50
             streak = 12
+
 
         # User skills
         u_skills = await db.execute(select(UserSkill).where(UserSkill.user_id == current_user.id))
@@ -141,7 +147,7 @@ async def get_developer_dashboard(
     skill_items: list[SkillMastery] = []
     total_mastery = 0
     for s in all_skills:
-        score = user_skills_map.get(s.id, 65)  # Baseline default score
+        score = user_skills_map.get(s.id, 50 if current_user else 0)
         total_mastery += score
         skill_items.append(
             SkillMastery(
@@ -166,12 +172,12 @@ async def get_developer_dashboard(
                 description=a.description,
                 badge_icon=a.badge_icon,
                 xp_reward=a.xp_reward,
-                is_unlocked=bool(ua or a.slug in ("first-design", "read-latency-lesson")),
+                is_unlocked=bool(ua or (current_user and a.slug in ("first-design", "read-latency-lesson"))),
                 unlocked_at=ua.unlocked_at if ua else None,
             )
         )
 
-    readiness = round(total_mastery / max(1, len(skill_items))) if skill_items else 78
+    readiness = round(total_mastery / max(1, len(skill_items))) if (skill_items and current_user) else 0
 
     recommendations = [
         "Complete 'Distributed Rate Limiter' challenge to boost API Gateway mastery to 85+",

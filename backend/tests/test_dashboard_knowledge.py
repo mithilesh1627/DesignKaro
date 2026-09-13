@@ -35,6 +35,16 @@ async def test_knowledge_search_category_filter(client):
 
 
 @pytest.mark.asyncio
+async def test_knowledge_search_multi_token_ranked(client):
+    response = await client.get("/api/v1/knowledge/search?q=whatsapp+erlang+concurrency")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_results"] >= 1
+    assert data["results"][0]["company"] == "WhatsApp"
+
+
+@pytest.mark.asyncio
+
 async def test_architecture_diff_endpoint(client):
     # Fetch public design
     designs_res = await client.get("/api/v1/designs")

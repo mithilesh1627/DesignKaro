@@ -2,7 +2,7 @@ import datetime
 import uuid
 from typing import Annotated
 
-from backend.app.api.deps import get_current_user
+from backend.app.api.deps import get_current_user, get_current_user_optional
 from backend.app.core.database import get_db
 from backend.app.models.learning import Lesson, Topic, UserLessonProgress
 from backend.app.models.skill import Skill, UserSkill
@@ -28,6 +28,7 @@ router = APIRouter()
 @router.get("/topics", response_model=list[TopicSummary], summary="List all learning topics")
 async def list_topics(
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User | None, Depends(get_current_user_optional)] = None,
     track: str | None = Query(None, description="Filter by track: beginner, intermediate, advanced, ml"),
 ):
     """
@@ -41,8 +42,19 @@ async def list_topics(
     result = await db.execute(query)
     topics = result.scalars().all()
 
+    completed_lesson_ids: set[uuid.UUID] = set()
+    if current_user:
+        progress_res = await db.execute(
+            select(UserLessonProgress.lesson_id).where(
+                UserLessonProgress.user_id == current_user.id,
+                UserLessonProgress.is_completed.is_(True),
+            )
+        )
+        completed_lesson_ids = set(progress_res.scalars().all())
+
     response = []
     for t in topics:
+        c_count = sum(1 for l in t.lessons if l.id in completed_lesson_ids)
         response.append(
             TopicSummary(
                 id=t.id,
@@ -53,7 +65,7 @@ async def list_topics(
                 order_index=t.order_index,
                 icon=t.icon,
                 lesson_count=len(t.lessons),
-                completed_count=0,
+                completed_count=c_count,
             )
         )
     return response
@@ -63,6 +75,7 @@ async def list_topics(
 async def get_topic(
     id_or_slug: str,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User | None, Depends(get_current_user_optional)] = None,
 ):
     """
     Returns detailed topic metadata and its ordered curriculum of lessons.
@@ -83,6 +96,16 @@ async def get_topic(
             detail=f"Topic '{id_or_slug}' not found.",
         )
 
+    completed_lesson_ids: set[uuid.UUID] = set()
+    if current_user:
+        progress_res = await db.execute(
+            select(UserLessonProgress.lesson_id).where(
+                UserLessonProgress.user_id == current_user.id,
+                UserLessonProgress.is_completed.is_(True),
+            )
+        )
+        completed_lesson_ids = set(progress_res.scalars().all())
+
     lessons_summary = [
         LessonSummary(
             id=lesson.id,
@@ -90,10 +113,12 @@ async def get_topic(
             title=lesson.title,
             estimated_minutes=lesson.estimated_minutes,
             order_index=lesson.order_index,
-            is_completed=False,
+            is_completed=(lesson.id in completed_lesson_ids),
         )
         for lesson in topic.lessons
     ]
+
+    completed_count = sum(1 for l in topic.lessons if l.id in completed_lesson_ids)
 
     return TopicDetail(
         id=topic.id,
@@ -104,7 +129,7 @@ async def get_topic(
         order_index=topic.order_index,
         icon=topic.icon,
         lesson_count=len(topic.lessons),
-        completed_count=0,
+        completed_count=completed_count,
         lessons=lessons_summary,
     )
 
@@ -113,6 +138,7 @@ async def get_topic(
 async def get_lesson(
     id_or_slug: str,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User | None, Depends(get_current_user_optional)] = None,
 ):
     """
     Retrieves rich lesson material covering the 10 core dimensions:
@@ -133,6 +159,17 @@ async def get_lesson(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Lesson '{id_or_slug}' not found.",
         )
+
+    # Check if completed by current user
+    is_completed = False
+    if current_user:
+        prog_stmt = select(UserLessonProgress).where(
+            UserLessonProgress.user_id == current_user.id,
+            UserLessonProgress.lesson_id == lesson.id,
+            UserLessonProgress.is_completed.is_(True),
+        )
+        prog_res = (await db.execute(prog_stmt)).scalar_one_or_none()
+        is_completed = prog_res is not None
 
     # Fetch sibling lessons for next/prev navigation
     siblings_query = select(Lesson).where(Lesson.topic_id == lesson.topic_id).order_by(Lesson.order_index)
@@ -158,7 +195,7 @@ async def get_lesson(
         content_markdown=lesson.content_markdown,
         estimated_minutes=lesson.estimated_minutes,
         order_index=lesson.order_index,
-        is_completed=False,
+        is_completed=is_completed,
         next_lesson_slug=next_slug,
         prev_lesson_slug=prev_slug,
     )

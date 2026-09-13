@@ -48,21 +48,40 @@ import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
 import { AuthModal } from "@/components/AuthModal";
 import { useAuthStore } from "@/lib/authStore";
+import { API_BASE } from "@/lib/api";
+import { AiMentorDrawer } from "@/components/AiMentorDrawer";
 
 // Component Category Definitions
-const COMPONENT_PALETTE = [
-  { type: "client", label: "Client Tier", icon: Globe, color: "border-sky-500/40 text-sky-400 bg-sky-500/10" },
-  { type: "gateway", label: "API Gateway", icon: ShieldCheck, color: "border-purple-500/40 text-purple-400 bg-purple-500/10" },
-  { type: "load_balancer", label: "Load Balancer", icon: Layers, color: "border-cyan-500/40 text-cyan-400 bg-cyan-500/10" },
-  { type: "service", label: "Microservice", icon: Server, color: "border-blue-500/40 text-blue-400 bg-blue-500/10" },
-  { type: "cache", label: "Redis Cache", icon: Zap, color: "border-rose-500/40 text-rose-400 bg-rose-500/10" },
-  { type: "relational_db", label: "Relational DB", icon: Database, color: "border-emerald-500/40 text-emerald-400 bg-emerald-500/10" },
-  { type: "nosql_db", label: "NoSQL DB", icon: Database, color: "border-teal-500/40 text-teal-400 bg-teal-500/10" },
-  { type: "queue", label: "Message Queue", icon: Radio, color: "border-amber-500/40 text-amber-400 bg-amber-500/10" },
-  { type: "storage", label: "Object Store", icon: HardDrive, color: "border-indigo-500/40 text-indigo-400 bg-indigo-500/10" },
-  { type: "cdn", label: "Edge CDN", icon: Globe, color: "border-orange-500/40 text-orange-400 bg-orange-500/10" },
-  { type: "ml", label: "ML / Vector DB", icon: Brain, color: "border-fuchsia-500/40 text-fuchsia-400 bg-fuchsia-500/10" },
+const COMPONENT_CATEGORIES = [
+  {
+    category: "Ingress & Compute",
+    items: [
+      { type: "client", label: "Client Tier", icon: Globe, color: "border-sky-500/40 text-sky-400 bg-sky-500/10" },
+      { type: "gateway", label: "API Gateway", icon: ShieldCheck, color: "border-purple-500/40 text-purple-400 bg-purple-500/10" },
+      { type: "load_balancer", label: "Load Balancer", icon: Layers, color: "border-cyan-500/40 text-cyan-400 bg-cyan-500/10" },
+      { type: "service", label: "Microservice", icon: Server, color: "border-blue-500/40 text-blue-400 bg-blue-500/10" },
+    ],
+  },
+  {
+    category: "Databases & Storage",
+    items: [
+      { type: "cache", label: "Redis Cache", icon: Zap, color: "border-rose-500/40 text-rose-400 bg-rose-500/10" },
+      { type: "relational_db", label: "Relational DB", icon: Database, color: "border-emerald-500/40 text-emerald-400 bg-emerald-500/10" },
+      { type: "nosql_db", label: "NoSQL DB", icon: Database, color: "border-teal-500/40 text-teal-400 bg-teal-500/10" },
+      { type: "storage", label: "Object Store", icon: HardDrive, color: "border-indigo-500/40 text-indigo-400 bg-indigo-500/10" },
+    ],
+  },
+  {
+    category: "Async & AI Tier",
+    items: [
+      { type: "queue", label: "Message Queue", icon: Radio, color: "border-amber-500/40 text-amber-400 bg-amber-500/10" },
+      { type: "cdn", label: "Edge CDN", icon: Globe, color: "border-orange-500/40 text-orange-400 bg-orange-500/10" },
+      { type: "ml", label: "ML / Vector DB", icon: Brain, color: "border-fuchsia-500/40 text-fuchsia-400 bg-fuchsia-500/10" },
+    ],
+  },
 ];
+
+const COMPONENT_PALETTE = COMPONENT_CATEGORIES.flatMap((c) => c.items);
 
 export interface ArchitectureNodeData extends Record<string, unknown> {
   type: string;
@@ -160,6 +179,11 @@ function DesignCanvasContent() {
   const searchParams = useSearchParams();
   const problemSlug = searchParams.get("problem");
   const problemTitle = searchParams.get("title");
+  const queryDesignId = searchParams.get("id") || searchParams.get("designId");
+
+  const [currentDesignId, setCurrentDesignId] = useState<string | null>(queryDesignId || null);
+  const [currentVersion, setCurrentVersion] = useState<number>(1);
+  const [isMentorOpen, setIsMentorOpen] = useState<boolean>(false);
 
   const [nodes, setNodes] = useState<Node[]>(TEMPLATES.tinyurl.nodes);
   const [edges, setEdges] = useState<Edge[]>(TEMPLATES.tinyurl.edges);
@@ -174,6 +198,54 @@ function DesignCanvasContent() {
 
   const { accessToken, isAuthenticated, user } = useAuthStore();
   const [authModalOpen, setAuthModalOpen] = useState(false);
+
+  // Load existing saved architecture if design ID passed in URL
+  useEffect(() => {
+    if (!queryDesignId) return;
+
+    const loadSavedDesign = async () => {
+      try {
+        const headers: Record<string, string> = {};
+        if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+
+        const res = await fetch(`${API_BASE}/api/v1/designs/${queryDesignId}`, { headers });
+        if (res.ok) {
+          const data = await res.json();
+          setCurrentDesignId(data.public_id || data.id);
+          setCurrentVersion(data.version_number || 1);
+          setDesignTitle(data.title);
+          if (data.graph_data?.nodes && data.graph_data.nodes.length > 0) {
+            setNodes(
+              data.graph_data.nodes.map((n: any) => ({
+                id: n.id,
+                type: "custom",
+                position: n.position || { x: 200, y: 150 },
+                data: {
+                  type: n.type,
+                  label: n.label,
+                  properties: n.properties,
+                },
+              }))
+            );
+          }
+          if (data.graph_data?.edges) {
+            setEdges(
+              data.graph_data.edges.map((e: any) => ({
+                id: e.id,
+                source: e.source,
+                target: e.target,
+                animated: e.animated !== false,
+              }))
+            );
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load design:", err);
+      }
+    };
+
+    loadSavedDesign();
+  }, [queryDesignId, accessToken]);
 
   const nodeTypes = useMemo(() => ({ custom: ArchitectureNode }), []);
 
@@ -297,7 +369,7 @@ function DesignCanvasContent() {
         })),
       };
 
-      const res = await fetch("http://127.0.0.1:8000/api/v1/designs/validate", {
+      const res = await fetch(`${API_BASE}/api/v1/designs/validate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(graphData),
@@ -314,50 +386,81 @@ function DesignCanvasContent() {
     }
   };
 
-  // Save to cloud
+  // Save to cloud (Revisioning support: PUT if updating, POST if new)
   const handleSaveToCloud = async () => {
     if (!isAuthenticated) {
-      alert("Please login via the Navigation session bar to save designs to your account.");
+      setAuthModalOpen(true);
       return;
     }
     try {
       setIsSaving(true);
-      const payload = {
-        title: designTitle,
-        description: problemSlug ? `Solution for challenge: ${problemSlug}` : "Interactive canvas architecture",
-        is_public: true,
-        scale_metadata: { nodes_count: nodes.length, edges_count: edges.length },
-        graph_data: {
-          nodes: nodes.map((n) => ({
-            id: n.id,
-            type: n.data.type,
-            label: n.data.label,
-            position: n.position,
-            properties: n.data.properties,
-          })),
-          edges: edges.map((e) => ({
-            id: e.id,
-            source: e.source,
-            target: e.target,
-            animated: e.animated,
-            properties: {},
-          })),
-        },
+      const graphData = {
+        nodes: nodes.map((n) => ({
+          id: n.id,
+          type: n.data.type,
+          label: n.data.label,
+          position: n.position,
+          properties: n.data.properties,
+        })),
+        edges: edges.map((e) => ({
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          animated: e.animated,
+          properties: {},
+        })),
       };
 
-      const res = await fetch("http://127.0.0.1:8000/api/v1/designs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify(payload),
-      });
+      if (currentDesignId) {
+        // Revision update: calls PUT to append a new version rather than creating duplicate design
+        const updatePayload = {
+          title: designTitle,
+          scale_metadata: { nodes_count: nodes.length, edges_count: edges.length },
+          graph_data: graphData,
+          notes: `Revision updated from canvas editor`,
+        };
 
-      if (res.ok) {
-        const saved = await res.json();
-        setSaveStatus(`Saved as ${saved.public_id}!`);
-        setTimeout(() => setSaveStatus(null), 4000);
+        const res = await fetch(`${API_BASE}/api/v1/designs/${currentDesignId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify(updatePayload),
+        });
+
+        if (res.ok) {
+          const saved = await res.json();
+          setCurrentVersion(saved.version_number);
+          setSaveStatus(`Saved Revision v${saved.version_number}!`);
+          setTimeout(() => setSaveStatus(null), 4000);
+        }
+      } else {
+        // Initial create: calls POST
+        const createPayload = {
+          title: designTitle,
+          description: problemSlug ? `Solution for challenge: ${problemSlug}` : "Interactive canvas architecture",
+          is_public: true,
+          scale_metadata: { nodes_count: nodes.length, edges_count: edges.length },
+          graph_data: graphData,
+        };
+
+        const res = await fetch(`${API_BASE}/api/v1/designs`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify(createPayload),
+        });
+
+        if (res.ok) {
+          const saved = await res.json();
+          setCurrentDesignId(saved.public_id || saved.id);
+          setCurrentVersion(saved.version_number || 1);
+          setSaveStatus(`Saved as ${saved.public_id} (v1)!`);
+          setTimeout(() => setSaveStatus(null), 4000);
+        }
       }
     } catch (err) {
       console.error("Failed to save design:", err);
@@ -419,102 +522,147 @@ function DesignCanvasContent() {
     <>
       <Navigation />
       <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden bg-surface-950">
-        {/* Canvas Toolbar */}
-        <div className="px-4 py-2.5 border-b border-slate-800 bg-surface-900/90 flex flex-wrap items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-3">
+        {/* Canvas Studio Toolbar */}
+        <div className="px-4 lg:px-6 py-2.5 border-b border-white/[0.08] bg-[#070c18]/95 backdrop-blur-xl flex flex-wrap items-center justify-between gap-3 shrink-0">
+          {/* Left Zone: Title & Versioning */}
+          <div className="flex items-center gap-3 min-w-0">
             <Link
               href={problemSlug ? `/practice/${problemSlug}` : "/practice"}
-              className="p-1.5 rounded-lg border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white transition-colors"
-              title="Return"
+              className="p-2 rounded-xl border border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.06] text-slate-400 hover:text-white transition-all shrink-0"
+              title="Return to practice catalog"
             >
               <ArrowLeft className="h-4 w-4" />
             </Link>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
               <input
                 type="text"
                 value={designTitle}
                 onChange={(e) => setDesignTitle(e.target.value)}
-                className="bg-transparent text-sm font-bold text-white border-b border-transparent hover:border-slate-700 focus:border-sky-500 focus:outline-none px-1 py-0.5 rounded"
+                className="bg-transparent text-sm font-bold text-white border-b border-transparent hover:border-white/20 focus:border-cyan-400 focus:outline-none px-1 py-0.5 rounded transition-colors max-w-[220px] sm:max-w-xs md:max-w-md truncate"
+                title="Click to rename design"
               />
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 shrink-0">
+                v{currentVersion}
+              </span>
               {problemSlug && (
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/30">
+                <span className="hidden sm:inline-flex text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/30 shrink-0">
                   Challenge Linked
                 </span>
               )}
             </div>
           </div>
 
-          {/* Quick Actions */}
-          <div className="flex items-center gap-2">
-            {/* Template selector */}
-            <div className="flex items-center gap-1 text-xs font-mono text-slate-400 mr-2">
-              <span className="hidden sm:inline">Templates:</span>
-              <button
-                onClick={() => handleLoadTemplate("tinyurl")}
-                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300"
-              >
-                TinyURL
-              </button>
-              <button
-                onClick={() => handleLoadTemplate("rate_limiter")}
-                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300"
-              >
-                RateLimiter
-              </button>
-            </div>
+          {/* Center Zone: Presets Segmented Selector */}
+          <div className="hidden xl:flex items-center gap-1.5 p-1 rounded-xl bg-slate-900/90 border border-white/[0.08] text-xs font-mono">
+            <span className="text-slate-500 text-[10px] uppercase font-bold tracking-wider px-2">Templates:</span>
+            <button
+              onClick={() => handleLoadTemplate("tinyurl")}
+              className="px-2.5 py-1 rounded-lg text-xs transition-colors hover:text-white text-slate-300 hover:bg-white/[0.05]"
+            >
+              TinyURL HA
+            </button>
+            <button
+              onClick={() => handleLoadTemplate("rate_limiter")}
+              className="px-2.5 py-1 rounded-lg text-xs transition-colors hover:text-white text-slate-300 hover:bg-white/[0.05]"
+            >
+              Rate Limiter
+            </button>
+          </div>
 
-            {/* Run Rule Check Button */}
+          {/* Right Zone: Actions & Tooling */}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* AI Mentor */}
+            <button
+              onClick={() => setIsMentorOpen(true)}
+              className="px-3 py-1.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs font-mono font-bold flex items-center gap-1.5 transition-all shadow-sm shadow-cyan-500/10"
+              title="Open Socratic AI Mentor Drawer"
+            >
+              <Brain className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">AI Mentor</span>
+            </button>
+
+            {/* Quick Links to Simulate & Review */}
+            <Link
+              href={`/simulate${currentDesignId ? `?designId=${currentDesignId}` : ""}`}
+              className="px-2.5 py-1.5 rounded-xl border border-white/[0.08] bg-slate-900/80 hover:bg-slate-800 text-slate-300 text-xs font-mono font-medium flex items-center gap-1.5 transition-colors"
+              title="Inject Traffic & Chaos"
+            >
+              <Play className="h-3 w-3 text-amber-400" />
+              <span className="hidden md:inline">Simulate</span>
+            </Link>
+            <Link
+              href={`/review${currentDesignId ? `?designId=${currentDesignId}` : ""}`}
+              className="px-2.5 py-1.5 rounded-xl border border-white/[0.08] bg-slate-900/80 hover:bg-slate-800 text-slate-300 text-xs font-mono font-medium flex items-center gap-1.5 transition-colors"
+              title="9-Dimension Architecture Review"
+            >
+              <FileCode className="h-3 w-3 text-sky-400" />
+              <span className="hidden md:inline">Review</span>
+            </Link>
+
+            {/* Health Check Button */}
             <button
               onClick={handleValidateGraph}
               disabled={isValidating}
-              className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors shadow-md shadow-emerald-500/20"
+              className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-mono font-bold flex items-center gap-1.5 transition-all shadow-md shadow-emerald-500/20 active:scale-95"
+              title="Run Deterministic Architectural Rule Checks"
             >
               <ShieldCheck className="h-3.5 w-3.5" />
-              <span>{isValidating ? "Evaluating..." : "Health Check"}</span>
+              <span>{isValidating ? "Checking..." : "Health Check"}</span>
             </button>
 
-            {/* Save Button */}
+            {/* Save Canvas / Revision */}
             <button
               onClick={handleSaveToCloud}
               disabled={isSaving}
-              className="px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors shadow-md shadow-sky-500/20"
+              className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 via-sky-500 to-indigo-500 hover:from-cyan-400 hover:to-indigo-400 text-slate-950 text-xs font-mono font-bold flex items-center gap-1.5 transition-all shadow-md shadow-cyan-500/20 active:scale-95"
             >
               <Save className="h-3.5 w-3.5" />
-              <span>{isSaving ? "Saving..." : "Save Canvas"}</span>
+              <span>{isSaving ? "Saving..." : currentDesignId ? "Save Revision" : "Save Canvas"}</span>
             </button>
 
             {saveStatus && (
-              <span className="text-xs font-mono text-emerald-400 animate-fade-in">
+              <span className="text-xs font-mono text-emerald-400 animate-fade-in font-bold hidden xl:inline">
                 {saveStatus}
               </span>
             )}
           </div>
         </div>
 
-        {/* Studio Workspace: Left Palette + Center Canvas + Right Inspector/Evaluation */}
+        {/* Studio Workspace: Left Palette + Center Canvas + Right Inspector */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Left Palette */}
-          <div className="w-48 border-r border-slate-800 bg-surface-900/40 p-3 overflow-y-auto space-y-2 shrink-0 hidden md:block">
-            <div className="text-[10px] font-mono uppercase text-slate-500 font-bold tracking-wider mb-2">
-              Component Palette
+          {/* Left Categorized Component Palette */}
+          <div className="w-56 border-r border-white/[0.08] bg-[#070c18]/90 backdrop-blur-md p-3.5 overflow-y-auto space-y-4 shrink-0 hidden md:block">
+            <div className="text-[10px] font-mono uppercase text-slate-400 font-bold tracking-wider flex items-center justify-between pb-1 border-b border-white/[0.06]">
+              <span>COMPONENTS</span>
+              <span className="text-[9px] text-cyan-400/80 font-normal">Click to Add</span>
             </div>
-            {COMPONENT_PALETTE.map((comp) => {
-              const Icon = comp.icon;
-              return (
-                <button
-                  key={comp.type}
-                  onClick={() => handleAddNode(comp.type)}
-                  className="w-full px-2.5 py-2 rounded-lg border border-slate-800/80 bg-slate-950/60 hover:bg-slate-800/60 hover:border-slate-700 text-left flex items-center gap-2.5 transition-all text-xs text-slate-300 group"
-                >
-                  <div className={`p-1 rounded ${comp.color}`}>
-                    <Icon className="h-3.5 w-3.5" />
-                  </div>
-                  <span className="truncate">{comp.label}</span>
-                  <Plus className="h-3 w-3 ml-auto text-slate-600 group-hover:text-sky-400 transition-colors" />
-                </button>
-              );
-            })}
+
+            {COMPONENT_CATEGORIES.map((catGroup) => (
+              <div key={catGroup.category} className="space-y-1.5">
+                <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider font-semibold px-1">
+                  {catGroup.category}
+                </div>
+                {catGroup.items.map((comp) => {
+                  const Icon = comp.icon;
+                  return (
+                    <button
+                      key={comp.type}
+                      onClick={() => handleAddNode(comp.type)}
+                      className="w-full px-2.5 py-2 rounded-xl border border-white/[0.06] bg-slate-900/60 hover:bg-slate-800/80 hover:border-cyan-500/40 text-left flex items-center gap-2.5 transition-all text-xs text-slate-300 group"
+                    >
+                      <div className={`p-1.5 rounded-lg border ${comp.color}`}>
+                        <Icon className="h-3.5 w-3.5" />
+                      </div>
+                      <span className="truncate text-xs group-hover:text-white transition-colors">
+                        {comp.label}
+                      </span>
+                      <Plus className="h-3.5 w-3.5 ml-auto text-slate-600 group-hover:text-cyan-400 transition-colors" />
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </div>
 
           {/* Center React Flow Canvas */}
@@ -528,45 +676,46 @@ function DesignCanvasContent() {
               onNodeClick={onNodeClick}
               nodeTypes={nodeTypes}
               fitView
-              className="bg-surface-950"
+              className="bg-[#050914]"
             >
-              <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#334155" />
-              <Controls className="!bg-slate-900 !border-slate-800 !fill-slate-300" />
+              <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1e293b" />
+              <Controls className="!bg-slate-900/90 !border-white/[0.1] !rounded-xl !fill-slate-300 !backdrop-blur-md" />
             </ReactFlow>
 
             {/* Floating Palette Trigger for Mobile */}
             <div className="md:hidden absolute bottom-4 left-4 z-10">
               <button
                 onClick={() => handleAddNode("service")}
-                className="p-3 rounded-full bg-sky-500 text-slate-950 shadow-lg"
+                className="p-3.5 rounded-full bg-cyan-500 text-slate-950 shadow-xl shadow-cyan-500/30 flex items-center justify-center"
+                title="Add Microservice"
               >
-                <Plus className="h-5 w-5" />
+                <Plus className="h-5 w-5 font-bold" />
               </button>
             </div>
           </div>
 
           {/* Right Inspector & Health Check Panel */}
-          <div className="w-80 border-l border-slate-800 bg-surface-900/70 p-4 overflow-y-auto shrink-0 flex flex-col gap-4">
+          <div className="w-80 border-l border-white/[0.08] bg-[#070c18]/90 backdrop-blur-md p-4 overflow-y-auto shrink-0 flex flex-col gap-4">
             {/* Validation Health Result Drawer */}
             {validationResult ? (
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+              <div className="p-4 rounded-2xl bg-slate-900/80 border border-white/[0.08] space-y-3.5 shadow-xl">
                 <div className="flex items-center justify-between">
-                  <div className="text-xs font-mono font-bold text-sky-400 flex items-center gap-1.5">
+                  <div className="text-xs font-mono font-bold text-cyan-400 flex items-center gap-1.5">
                     <ShieldCheck className="h-4 w-4" />
                     <span>RULE ENGINE VERDICT</span>
                   </div>
                   <button
                     onClick={() => setValidationResult(null)}
-                    className="text-slate-500 hover:text-slate-300"
+                    className="p-1 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-white/[0.05]"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between p-3 rounded-lg bg-surface-900 border border-slate-800">
-                  <span className="text-xs font-mono text-slate-400">Health Score:</span>
+                <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-950/80 border border-white/[0.06]">
+                  <span className="text-xs font-mono text-slate-400">Health Score</span>
                   <span
-                    className={`text-base font-extrabold font-mono ${
+                    className={`text-lg font-black font-mono ${
                       validationResult.health_score >= 85
                         ? "text-emerald-400"
                         : validationResult.health_score >= 60
@@ -578,27 +727,27 @@ function DesignCanvasContent() {
                   </span>
                 </div>
 
-                <p className="text-xs text-slate-300 leading-relaxed">
+                <p className="text-xs text-slate-300 leading-relaxed font-light">
                   {validationResult.summary}
                 </p>
 
                 {/* Violations */}
                 {validationResult.violations.length > 0 && (
-                  <div className="space-y-2 pt-2 border-t border-slate-800/80">
-                    <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">
+                  <div className="space-y-2 pt-2 border-t border-white/[0.06]">
+                    <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider font-bold">
                       Violations ({validationResult.violations.length})
                     </div>
                     {validationResult.violations.map((v: any, idx: number) => (
                       <div
                         key={idx}
-                        className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 space-y-1"
+                        className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 space-y-1"
                       >
                         <div className="font-bold flex items-center gap-1 text-rose-400">
                           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                           <span>{v.rule_name}</span>
                         </div>
                         <div className="text-[11px] text-slate-300 leading-normal">{v.message}</div>
-                        <div className="text-[10px] text-sky-300 font-mono pt-1">
+                        <div className="text-[10px] text-cyan-300 font-mono pt-1">
                           Fix: {v.remediation}
                         </div>
                       </div>
@@ -608,15 +757,15 @@ function DesignCanvasContent() {
 
                 {/* Passed Rules */}
                 {validationResult.passed_rules.length > 0 && (
-                  <div className="pt-2 border-t border-slate-800/80">
-                    <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1.5">
+                  <div className="pt-2 border-t border-white/[0.06]">
+                    <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider mb-1.5 font-bold">
                       Verified Invariants ({validationResult.passed_rules.length})
                     </div>
                     <div className="flex flex-wrap gap-1">
                       {validationResult.passed_rules.map((rule: string) => (
                         <span
                           key={rule}
-                          className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                          className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
                         >
                           ✓ {rule}
                         </span>
@@ -626,40 +775,40 @@ function DesignCanvasContent() {
                 )}
               </div>
             ) : (
-              <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 text-center space-y-2">
-                <ShieldCheck className="h-6 w-6 text-slate-600 mx-auto" />
+              <div className="p-4 rounded-2xl bg-slate-900/40 border border-white/[0.06] text-center space-y-2">
+                <ShieldCheck className="h-6 w-6 text-slate-500 mx-auto" />
                 <div className="text-xs font-bold text-slate-300">Deterministic Rule Engine</div>
-                <p className="text-[11px] text-slate-500 leading-normal">
-                  Click "Health Check" to run first-principles architectural verification (SPOFs, unbuffered queues, missing caches).
+                <p className="text-[11px] text-slate-400 leading-normal font-light">
+                  Click "Health Check" to evaluate SPOFs, unbuffered async queues, and database bottlenecks.
                 </p>
               </div>
             )}
 
             {/* Selected Node Properties Inspector */}
             {selectedNode ? (
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                  <div className="flex items-center gap-2 text-xs font-mono font-bold text-sky-400">
+              <div className="p-4 rounded-2xl bg-slate-900/80 border border-white/[0.08] space-y-3 shadow-xl">
+                <div className="flex items-center justify-between border-b border-white/[0.06] pb-2.5">
+                  <div className="flex items-center gap-2 text-xs font-mono font-bold text-cyan-400">
                     <Sliders className="h-3.5 w-3.5" />
                     <span>NODE INSPECTOR</span>
                   </div>
                   <button
                     onClick={handleDeleteSelected}
-                    className="p-1 rounded text-rose-400 hover:bg-rose-500/20 transition-colors"
+                    className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/20 transition-colors"
                     title="Delete Node"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
 
-                <div className="space-y-2.5 text-xs">
+                <div className="space-y-3 text-xs">
                   <div>
                     <label className="text-[10px] font-mono text-slate-400 block mb-1">Component Label</label>
                     <input
                       type="text"
                       value={String(selectedNode.data.label || "")}
                       onChange={(e) => handleUpdateSelectedLabel(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded bg-surface-900 border border-slate-800 text-xs text-white focus:outline-none focus:border-sky-500"
+                      className="w-full px-3 py-1.5 rounded-xl bg-slate-950 border border-white/[0.08] text-xs text-white focus:outline-none focus:border-cyan-400 transition-colors"
                     />
                   </div>
 
@@ -670,8 +819,13 @@ function DesignCanvasContent() {
                       min={1}
                       max={100}
                       value={Number((selectedNode.data.properties as any)?.replicas ?? 1)}
-                      onChange={(e) => handleUpdateSelectedProperty("replicas", parseInt(e.target.value) || 1)}
-                      className="w-full px-2.5 py-1.5 rounded bg-surface-900 border border-slate-800 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                      onChange={(e) =>
+                        handleUpdateSelectedProperty(
+                          "replicas",
+                          Math.max(1, Math.min(100, parseInt(e.target.value) || 1))
+                        )
+                      }
+                      className="w-full px-3 py-1.5 rounded-xl bg-slate-950 border border-white/[0.08] text-xs text-white focus:outline-none focus:border-cyan-400 font-mono transition-colors"
                     />
                   </div>
 
@@ -682,27 +836,52 @@ function DesignCanvasContent() {
                       step={0.5}
                       min={0}
                       value={Number((selectedNode.data.properties as any)?.latency_ms ?? 1.0)}
-                      onChange={(e) => handleUpdateSelectedProperty("latency_ms", parseFloat(e.target.value) || 0)}
-                      className="w-full px-2.5 py-1.5 rounded bg-surface-900 border border-slate-800 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                      onChange={(e) =>
+                        handleUpdateSelectedProperty(
+                          "latency_ms",
+                          Math.max(0, parseFloat(e.target.value) || 0)
+                        )
+                      }
+                      className="w-full px-3 py-1.5 rounded-xl bg-slate-950 border border-white/[0.08] text-xs text-white focus:outline-none focus:border-cyan-400 font-mono transition-colors"
                     />
                   </div>
 
                   <div>
                     <label className="text-[10px] font-mono text-slate-400 block mb-1">Node Type</label>
-                    <span className="text-xs font-mono text-slate-300 uppercase px-2 py-1 rounded bg-slate-900 border border-slate-800 block">
+                    <span className="text-xs font-mono text-cyan-300 uppercase px-2.5 py-1.5 rounded-xl bg-slate-950 border border-white/[0.06] block">
                       {String(selectedNode.data.type || "")}
                     </span>
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="p-4 rounded-xl bg-slate-950/40 border border-dashed border-slate-800/80 text-center text-xs text-slate-500">
-                Click any component node on the canvas to inspect its properties, replicas, and latency overhead.
+              <div className="p-4 rounded-2xl bg-slate-900/30 border border-dashed border-white/[0.08] text-center text-xs text-slate-500">
+                Click any component node on the canvas to inspect replicas, latency overhead, and capacity.
               </div>
             )}
           </div>
         </div>
       </div>
+
+      <AiMentorDrawer
+        isOpen={isMentorOpen}
+        onClose={() => setIsMentorOpen(false)}
+        problemSlug={problemSlug || undefined}
+        graphData={{
+          nodes: nodes.map((n) => ({
+            id: n.id,
+            type: n.data.type,
+            label: n.data.label,
+            properties: n.data.properties,
+          })),
+          edges: edges.map((e) => ({
+            id: e.id,
+            source: e.source,
+            target: e.target,
+          })),
+        }}
+      />
+
       <Footer />
     </>
   );

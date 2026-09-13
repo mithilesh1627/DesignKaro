@@ -190,3 +190,105 @@ async def test_designs_api_lifecycle(client):
     val_data = val_res.json()
     assert val_data["status"] == "PASS"
     assert val_data["health_score"] >= 85
+
+
+def test_direct_client_database_access_rule_005():
+    graph = GraphData(
+        nodes=[
+            CanvasNodeData(id="client-1", type="client", label="Client"),
+            CanvasNodeData(id="db-1", type="relational_db", label="Postgres", properties=NodePropertySchema(replicas=2)),
+        ],
+        edges=[CanvasEdgeData(id="e1", source="client-1", target="db-1")],
+    )
+    res = rule_engine.evaluate(graph)
+    assert any(v.rule_id == "RULE-005" for v in res.violations)
+
+
+def test_cyclic_dependency_rule_007():
+    graph = GraphData(
+        nodes=[
+            CanvasNodeData(id="client-1", type="client", label="Client"),
+            CanvasNodeData(id="gw-1", type="gateway", label="Gateway"),
+            CanvasNodeData(id="svc-a", type="service", label="Service A"),
+            CanvasNodeData(id="svc-b", type="service", label="Service B"),
+            CanvasNodeData(id="db-1", type="relational_db", label="Postgres", properties=NodePropertySchema(replicas=2)),
+        ],
+        edges=[
+            CanvasEdgeData(id="e1", source="client-1", target="gw-1"),
+            CanvasEdgeData(id="e2", source="gw-1", target="svc-a"),
+            CanvasEdgeData(id="e3", source="svc-a", target="svc-b"),
+            CanvasEdgeData(id="e4", source="svc-b", target="svc-a"),  # Cycle!
+            CanvasEdgeData(id="e5", source="svc-a", target="db-1"),
+        ],
+    )
+    res = rule_engine.evaluate(graph)
+    assert any(v.rule_id == "RULE-007" for v in res.violations)
+
+
+def test_database_bottleneck_rule_010():
+    # 4 services all pointing to a single DB
+    graph = GraphData(
+        nodes=[
+            CanvasNodeData(id="client-1", type="client", label="Client"),
+            CanvasNodeData(id="gw-1", type="gateway", label="Gateway"),
+            CanvasNodeData(id="s1", type="service", label="S1"),
+            CanvasNodeData(id="s2", type="service", label="S2"),
+            CanvasNodeData(id="s3", type="service", label="S3"),
+            CanvasNodeData(id="s4", type="service", label="S4"),
+            CanvasNodeData(id="db-1", type="relational_db", label="Postgres", properties=NodePropertySchema(replicas=2)),
+        ],
+        edges=[
+            CanvasEdgeData(id="e0", source="client-1", target="gw-1"),
+            CanvasEdgeData(id="e1", source="gw-1", target="s1"),
+            CanvasEdgeData(id="e2", source="s1", target="db-1"),
+            CanvasEdgeData(id="e3", source="s2", target="db-1"),
+            CanvasEdgeData(id="e4", source="s3", target="db-1"),
+            CanvasEdgeData(id="e5", source="s4", target="db-1"),
+        ],
+    )
+    res = rule_engine.evaluate(graph)
+    assert any(v.rule_id == "RULE-010" for v in res.violations)
+
+
+def test_synchronous_chain_too_deep_rule_011():
+    # Chain: S1 -> S2 -> S3 -> S4 (depth = 3)
+    graph = GraphData(
+        nodes=[
+            CanvasNodeData(id="client-1", type="client", label="Client"),
+            CanvasNodeData(id="gw-1", type="gateway", label="Gateway"),
+            CanvasNodeData(id="s1", type="service", label="S1"),
+            CanvasNodeData(id="s2", type="service", label="S2"),
+            CanvasNodeData(id="s3", type="service", label="S3"),
+            CanvasNodeData(id="s4", type="service", label="S4"),
+            CanvasNodeData(id="db-1", type="relational_db", label="Postgres", properties=NodePropertySchema(replicas=2)),
+        ],
+        edges=[
+            CanvasEdgeData(id="e0", source="client-1", target="gw-1"),
+            CanvasEdgeData(id="e1", source="gw-1", target="s1"),
+            CanvasEdgeData(id="e2", source="s1", target="s2"),
+            CanvasEdgeData(id="e3", source="s2", target="s3"),
+            CanvasEdgeData(id="e4", source="s3", target="s4"),
+            CanvasEdgeData(id="e5", source="s4", target="db-1"),
+        ],
+    )
+    res = rule_engine.evaluate(graph)
+    assert any(v.rule_id == "RULE-011" for v in res.violations)
+
+
+def test_high_burst_without_async_buffer_rule_012():
+    graph = GraphData(
+        nodes=[
+            CanvasNodeData(id="client-1", type="client", label="Client"),
+            CanvasNodeData(id="gw-1", type="gateway", label="Gateway"),
+            CanvasNodeData(id="s1", type="service", label="S1"),
+            CanvasNodeData(id="db-1", type="relational_db", label="Postgres", properties=NodePropertySchema(replicas=2)),
+        ],
+        edges=[
+            CanvasEdgeData(id="e0", source="client-1", target="gw-1"),
+            CanvasEdgeData(id="e1", source="gw-1", target="s1"),
+            CanvasEdgeData(id="e2", source="s1", target="db-1"),
+        ],
+    )
+    res = rule_engine.evaluate(graph, scale_metadata={"write_qps": 15000})
+    assert any(v.rule_id == "RULE-012" for v in res.violations)
+

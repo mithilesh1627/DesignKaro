@@ -26,6 +26,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { AuthModal } from "@/components/AuthModal";
+import { Footer } from "@/components/Footer";
 import { useAuthStore } from "@/lib/authStore";
 
 interface ArchNode {
@@ -429,53 +430,51 @@ export default function LandingPage() {
             </div>
           </Link>
 
-          {/* Quick Route Nav - Available only once user is logged in / signed in */}
-          {isAuthenticated && user && (
-            <nav className="hidden lg:flex items-center gap-1 font-mono text-xs text-slate-400">
-              <Link
-                href="/learn"
-                className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
-              >
-                LEARN
-              </Link>
-              <Link
-                href="/practice"
-                className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
-              >
-                PRACTICE
-              </Link>
-              <Link
-                href="/design"
-                className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
-              >
-                CANVAS
-              </Link>
-              <a
-                href="#simulation-arena"
-                className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
-              >
-                SIMULATE
-              </a>
-              <a
-                href="#invariants"
-                className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
-              >
-                INVARIANTS
-              </a>
-              <Link
-                href="/interview"
-                className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
-              >
-                INTERVIEW
-              </Link>
-              <Link
-                href="/progress"
-                className="px-3 py-1 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
-              >
-                PROGRESS
-              </Link>
-            </nav>
-          )}
+          {/* Quick Route Nav - Visible to all visitors */}
+          <nav className="hidden lg:flex items-center gap-1 font-mono text-xs text-slate-400">
+            <Link
+              href="/learn"
+              className="px-3 py-1.5 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
+            >
+              LEARN
+            </Link>
+            <Link
+              href="/practice"
+              className="px-3 py-1.5 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
+            >
+              PRACTICE
+            </Link>
+            <Link
+              href="/design"
+              className="px-3 py-1.5 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
+            >
+              CANVAS
+            </Link>
+            <Link
+              href="/simulate"
+              className="px-3 py-1.5 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
+            >
+              SIMULATE
+            </Link>
+            <Link
+              href="/interview"
+              className="px-3 py-1.5 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
+            >
+              INTERVIEW
+            </Link>
+            <Link
+              href="/review"
+              className="px-3 py-1.5 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
+            >
+              REVIEW
+            </Link>
+            <Link
+              href="/progress"
+              className="px-3 py-1.5 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
+            >
+              PROGRESS
+            </Link>
+          </nav>
         </div>
 
         {/* Auth & CTA */}
@@ -1326,32 +1325,7 @@ export default function LandingPage() {
       </section>
 
       {/* ==================== FOOTER ==================== */}
-      <footer className="w-full border-t border-white/[0.08] bg-[#040710] py-10 px-6 sm:px-12 text-xs text-slate-400 font-mono">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex flex-col gap-1 items-center md:items-start text-center md:text-left">
-            <div className="flex items-center gap-2">
-              <span className="text-base font-bold text-white font-display tracking-tight">
-                Design<span className="text-cyan-400">Karo</span>
-              </span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950/60 border border-cyan-800/40 text-cyan-400">
-                Live Platform
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-500">
-              Socho. Design Karo. Scale Karo.
-            </p>
-          </div>
-
-      
-
-          <div className="text-[11px] text-slate-500 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Mithilesh Chaurasiya</span>
-            
-          </div>
-          
-        </div>
-      </footer>
+      <Footer />
 
       {/* Authentication Modal */}
       <AuthModal

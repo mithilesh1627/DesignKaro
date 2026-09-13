@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { X, Lock, Mail, User, ShieldCheck, ArrowRight, Loader2 } from "lucide-react";
 import { useAuthStore } from "@/lib/authStore";
+import { API_BASE } from "@/lib/api";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -26,6 +27,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   const setAuth = useAuthStore((state) => state.setAuth);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    if (isOpen) {
+      window.addEventListener("keydown", handleKeyDown);
+      return () => window.removeEventListener("keydown", handleKeyDown);
+    }
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -33,7 +44,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setIsLoading(true);
     setErrorMsg(null);
 
-    const baseUrl = "http://127.0.0.1:8000/api/v1/auth";
+    const baseUrl = `${API_BASE}/api/v1/auth`;
     const endpoint = mode === "login" ? `${baseUrl}/login` : `${baseUrl}/register`;
 
     const body =
@@ -57,7 +68,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.detail || "Authentication failed");
+        if (Array.isArray(data.detail)) {
+          const formatted = data.detail.map((d: any) => d.msg || JSON.stringify(d)).join(". ");
+          throw new Error(formatted);
+        }
+        throw new Error(typeof data.detail === "string" ? data.detail : "Authentication failed");
       }
 
       setAuth(data.user, data.access_token, data.refresh_token);

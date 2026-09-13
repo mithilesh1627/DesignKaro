@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Activity, Server } from "lucide-react";
+import { API_BASE } from "../lib/api";
 
 interface HealthData {
   status: string;
@@ -21,7 +22,7 @@ export const HealthBadge: React.FC = () => {
       const startTime = performance.now();
       try {
         // Fetch via client rewrite or fallback to direct URL
-        const res = await fetch("http://127.0.0.1:8000/api/v1/health", {
+        const res = await fetch(`${API_BASE}/api/v1/health`, {
           signal: AbortSignal.timeout(3000),
         });
         const elapsed = Math.round(performance.now() - startTime);

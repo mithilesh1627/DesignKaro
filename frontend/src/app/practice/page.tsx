@@ -8,20 +8,15 @@ import {
   Search,
   Filter,
   CheckCircle2,
-  Clock,
-  Sparkles,
   ArrowRight,
-  ShieldCheck,
   Zap,
-  Layers,
-  Database,
-  Radio,
-  Cpu,
   Loader2,
+  Sparkles,
 } from "lucide-react";
 import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
 import { useAuthStore } from "@/lib/authStore";
+import { API_BASE } from "@/lib/api";
 
 interface QuestionSummary {
   id: string;
@@ -62,7 +57,7 @@ export default function PracticeCatalogPage() {
         if (accessToken) {
           headers["Authorization"] = `Bearer ${accessToken}`;
         }
-        const res = await fetch("http://127.0.0.1:8000/api/v1/problems", { headers });
+        const res = await fetch(`${API_BASE}/api/v1/problems`, { headers });
         if (res.ok) {
           const data = await res.json();
           setQuestions(data.questions || []);
@@ -97,33 +92,35 @@ export default function PracticeCatalogPage() {
         {/* Breadcrumb */}
         <Link
           href="/"
-          className="inline-flex items-center gap-1.5 text-xs font-mono text-slate-400 hover:text-sky-400 mb-6 transition-colors"
+          className="inline-flex items-center gap-1.5 text-xs font-mono text-slate-400 hover:text-cyan-400 mb-6 transition-colors"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           <span>Back to Home</span>
         </Link>
 
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-mono text-sky-400 mb-1">
-              <Zap className="h-4 w-4" />
-              <span>PHASE 4: PRACTICE ENGINE</span>
+        {/* Page Hero Header */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-xs font-mono text-cyan-400">
+              <Zap className="h-3.5 w-3.5" />
+              <span>Practice Arena</span>
             </div>
-            <h1 className="text-3xl font-extrabold text-white tracking-tight">System Design Challenges</h1>
-            <p className="text-sm text-slate-400 mt-1">
-              LeetCode-style real-world architecture problems with progressive constraints, automated graph evaluation &amp; Socratic hints.
+            <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight font-display">
+              System Design Challenges
+            </h1>
+            <p className="text-sm text-slate-400 max-w-2xl leading-relaxed">
+              Real-world distributed systems challenges. Estimate capacity, build architectures on canvas, test resiliency, and receive instant rubric evaluation.
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="px-3.5 py-1.5 rounded-lg bg-surface-900 border border-slate-800 text-xs font-mono flex items-center gap-2">
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="px-4 py-2 rounded-xl bg-white/[0.03] border border-white/[0.08] text-xs font-mono flex items-center gap-2.5">
               <span className="text-slate-400">Total Challenges:</span>
-              <span className="text-sky-400 font-bold">{questions.length}</span>
+              <span className="text-cyan-400 font-bold text-sm">{questions.length}</span>
             </div>
             <Link
               href="/design"
-              className="px-4 py-2 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs font-mono flex items-center gap-1.5 transition-colors shadow-lg shadow-sky-500/20"
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-500 hover:from-cyan-400 hover:to-sky-400 text-slate-950 font-bold text-xs font-mono flex items-center gap-2 transition-all shadow-lg shadow-cyan-500/20 active:scale-95"
             >
               <span>Blank Canvas</span>
               <ArrowRight className="h-3.5 w-3.5" />
@@ -131,31 +128,31 @@ export default function PracticeCatalogPage() {
           </div>
         </div>
 
-        {/* Filter Toolbar */}
-        <div className="p-4 rounded-xl bg-surface-900/70 border border-slate-800/80 mb-8 space-y-4">
+        {/* Filter & Search Toolbar */}
+        <div className="p-5 rounded-2xl bg-[#080d1a]/80 border border-white/[0.08] mb-8 space-y-4 shadow-xl">
           <div className="flex flex-col md:flex-row gap-3">
             {/* Search Input */}
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
               <input
                 type="text"
-                placeholder="Search challenges by title, category, or concepts (e.g. Redis, Hashing, CDN)..."
+                placeholder="Search challenges by title, category, or concepts (e.g. TinyURL, Redis, Kafka)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 rounded-lg bg-slate-950 border border-slate-800 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950/80 border border-white/[0.08] text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
               />
             </div>
 
             {/* Difficulty Tabs */}
-            <div className="flex items-center gap-1 p-1 rounded-lg bg-slate-950 border border-slate-800 overflow-x-auto">
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-950/80 border border-white/[0.08] overflow-x-auto shrink-0">
               {["all", "beginner", "intermediate", "advanced", "hard"].map((diff) => (
                 <button
                   key={diff}
                   onClick={() => setSelectedDifficulty(diff)}
-                  className={`px-3 py-1 rounded text-xs font-mono capitalize transition-colors shrink-0 ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-mono capitalize transition-all shrink-0 ${
                     selectedDifficulty === diff
-                      ? "bg-sky-500 text-slate-950 font-bold"
-                      : "text-slate-400 hover:text-white"
+                      ? "bg-gradient-to-r from-cyan-500 to-sky-500 text-slate-950 font-bold shadow-md shadow-cyan-500/20"
+                      : "text-slate-400 hover:text-white hover:bg-white/[0.04]"
                   }`}
                 >
                   {diff}
@@ -164,18 +161,18 @@ export default function PracticeCatalogPage() {
             </div>
           </div>
 
-          {/* Category Pills */}
+          {/* Category Filter Pills */}
           {categories.length > 0 && (
-            <div className="flex items-center gap-1.5 overflow-x-auto pt-1 pb-1">
+            <div className="flex items-center gap-2 overflow-x-auto pt-1 pb-1">
               <span className="text-[11px] font-mono text-slate-500 shrink-0 mr-1 flex items-center gap-1">
                 <Filter className="h-3 w-3" /> Category:
               </span>
               <button
                 onClick={() => setSelectedCategory("all")}
-                className={`px-2.5 py-0.5 rounded-full text-[11px] font-mono transition-colors shrink-0 ${
+                className={`px-3 py-1 rounded-full text-[11px] font-mono transition-all shrink-0 ${
                   selectedCategory === "all"
-                    ? "bg-slate-200 text-slate-950 font-bold"
-                    : "bg-slate-800/60 text-slate-400 hover:text-white"
+                    ? "bg-white/[0.12] text-cyan-300 font-bold border border-cyan-500/30"
+                    : "bg-white/[0.03] text-slate-400 hover:text-white border border-white/[0.04]"
                 }`}
               >
                 All Domains
@@ -184,10 +181,10 @@ export default function PracticeCatalogPage() {
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-mono transition-colors shrink-0 ${
+                  className={`px-3 py-1 rounded-full text-[11px] font-mono transition-all shrink-0 ${
                     selectedCategory === cat
-                      ? "bg-sky-500 text-slate-950 font-bold"
-                      : "bg-slate-800/60 text-slate-400 hover:text-white"
+                      ? "bg-cyan-500 text-slate-950 font-bold shadow-md shadow-cyan-500/20"
+                      : "bg-white/[0.03] text-slate-400 hover:text-white border border-white/[0.04]"
                   }`}
                 >
                   {cat}
@@ -200,30 +197,30 @@ export default function PracticeCatalogPage() {
         {/* Loading State */}
         {isLoading ? (
           <div className="py-24 text-center">
-            <Loader2 className="h-8 w-8 text-sky-400 animate-spin mx-auto mb-3" />
+            <Loader2 className="h-8 w-8 text-cyan-400 animate-spin mx-auto mb-3" />
             <p className="text-sm font-mono text-slate-400">Loading system design challenges...</p>
           </div>
         ) : filteredQuestions.length === 0 ? (
-          <div className="py-20 text-center rounded-xl border border-dashed border-slate-800 bg-surface-900/30">
+          <div className="py-20 text-center rounded-2xl border border-dashed border-white/[0.08] bg-white/[0.02]">
             <Code2 className="h-10 w-10 text-slate-600 mx-auto mb-3" />
             <p className="text-sm text-slate-300 font-semibold">No challenges match your filters</p>
             <p className="text-xs text-slate-500 mt-1">Try resetting the category, difficulty, or search term.</p>
           </div>
         ) : (
-          /* Problems List */
-          <div className="space-y-3">
+          /* Problems Grid */
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredQuestions.map((q, idx) => {
               const diffStyle = DIFFICULTY_STYLES[q.difficulty.toLowerCase()] || DIFFICULTY_STYLES.beginner;
               return (
                 <Link
                   key={q.id}
                   href={`/practice/${q.slug}`}
-                  className="group block p-5 rounded-xl border border-slate-800/80 bg-surface-900/60 hover:bg-surface-900 hover:border-sky-500/40 transition-all shadow-sm"
+                  className="group relative p-6 rounded-2xl border border-white/[0.07] bg-[#080d1a]/70 hover:bg-[#0c1426] hover:border-cyan-500/40 transition-all shadow-lg flex flex-col justify-between"
                 >
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    <div className="space-y-2 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-950 text-slate-400 border border-slate-800">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-950 text-slate-400 border border-white/[0.08]">
                           #{String(idx + 1).padStart(2, "0")}
                         </span>
                         <span
@@ -231,55 +228,54 @@ export default function PracticeCatalogPage() {
                         >
                           {q.difficulty}
                         </span>
-                        <span className="text-[11px] font-mono text-slate-500 px-2 py-0.5 rounded bg-slate-800/40">
+                        <span className="text-[11px] font-mono text-slate-400 px-2 py-0.5 rounded bg-white/[0.04]">
                           {q.category}
                         </span>
-                        {q.is_completed && (
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                            <CheckCircle2 className="h-3 w-3" />
-                            <span>Solved</span>
-                          </span>
-                        )}
                       </div>
-
-                      <h2 className="text-base font-bold text-white group-hover:text-sky-400 transition-colors">
-                        {q.title}
-                      </h2>
-
-                      <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
-                        {q.description}
-                      </p>
-
-                      {/* Scale tags */}
-                      {q.expected_scale && Object.keys(q.expected_scale).length > 0 && (
-                        <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px] font-mono text-slate-500">
-                          {Object.entries(q.expected_scale).slice(0, 3).map(([key, val]) => (
-                            <span key={key} className="flex items-center gap-1">
-                              <span className="text-slate-600">•</span>
-                              <span className="text-slate-400 capitalize">{key.replace(/_/g, " ")}:</span>
-                              <span className="text-sky-300 font-semibold">{String(val)}</span>
-                            </span>
-                          ))}
-                        </div>
+                      {q.is_completed && (
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3" />
+                          <span>Solved</span>
+                        </span>
                       )}
                     </div>
 
-                    <div className="flex items-center gap-3 lg:self-center shrink-0">
-                      <div className="text-right hidden sm:block">
-                        <div className="text-xs font-mono text-slate-400">
-                          {q.attempts_count > 0 ? `${q.attempts_count} attempts` : "Not attempted"}
-                        </div>
-                        {q.best_score !== null && (
-                          <div className="text-[11px] font-mono text-emerald-400">
-                            Best Score: {q.best_score}%
-                          </div>
-                        )}
-                      </div>
+                    <h2 className="text-lg font-bold text-white group-hover:text-cyan-300 transition-colors font-display">
+                      {q.title}
+                    </h2>
 
-                      <div className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 group-hover:bg-sky-500 group-hover:text-slate-950 font-mono text-xs font-bold flex items-center gap-1 transition-all">
-                        <span>Solve</span>
-                        <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform" />
+                    <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed font-light">
+                      {q.description}
+                    </p>
+
+                    {/* Scale metadata tags */}
+                    {q.expected_scale && Object.keys(q.expected_scale).length > 0 && (
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        {Object.entries(q.expected_scale).slice(0, 3).map(([key, val]) => (
+                          <span
+                            key={key}
+                            className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-white/[0.03] border border-white/[0.06] text-slate-400"
+                          >
+                            <span className="text-slate-500 capitalize">{key.replace(/_/g, " ")}: </span>
+                            <span className="text-cyan-300 font-semibold">{String(val)}</span>
+                          </span>
+                        ))}
                       </div>
+                    )}
+                  </div>
+
+                  <div className="mt-5 pt-3 border-t border-white/[0.04] flex items-center justify-between">
+                    <div className="text-xs font-mono text-slate-500">
+                      {q.best_score !== null ? (
+                        <span className="text-emerald-400">Score: {q.best_score}%</span>
+                      ) : (
+                        <span>Not attempted yet</span>
+                      )}
+                    </div>
+
+                    <div className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-cyan-400 group-hover:translate-x-1 transition-transform">
+                      <span>Start Challenge</span>
+                      <ArrowRight className="h-3.5 w-3.5" />
                     </div>
                   </div>
                 </Link>

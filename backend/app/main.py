@@ -6,7 +6,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api.v1.api import api_router
 from backend.app.core.config import settings
-from backend.app.core.middleware import SecurityHeadersMiddleware, TelemetryMiddleware
+from backend.app.core.middleware import (
+    RateLimitMiddleware,
+    SecurityHeadersMiddleware,
+    TelemetryMiddleware,
+)
 from backend.app.core.redis import redis_manager
 
 # Configure structured logging
@@ -45,6 +49,9 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 # Telemetry & Request Timing Middleware
 app.add_middleware(TelemetryMiddleware)
+
+# Rate Limiting Middleware
+app.add_middleware(RateLimitMiddleware)
 
 # CORS Middleware
 app.add_middleware(

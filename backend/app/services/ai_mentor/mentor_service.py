@@ -26,7 +26,7 @@ class SeniorEngineerMentorService:
         # Heuristic Socratic reasoning engine
         reply_lines = []
         followups = []
-        dimension = "Scalability & Invariants"
+        dimension = "Scalability & Invariants"  
 
         # Check graph topology if available
         if graph and graph.nodes:

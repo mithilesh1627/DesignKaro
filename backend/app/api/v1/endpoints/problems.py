@@ -180,11 +180,27 @@ async def submit_problem_attempt(
             detail=f"Problem '{id_or_slug}' not found",
         )
 
+    total_reqs = len(question.requirements or [])
+    checklist_completed = payload.feedback.get("checklist_completed") if payload.feedback else None
+
+    if checklist_completed is not None and total_reqs > 0:
+        ratio = min(1.0, max(0.0, float(checklist_completed) / float(total_reqs)))
+        verified_score = int(round(ratio * 100))
+    else:
+        verified_score = min(100, max(0, payload.score))
+
+    if verified_score >= 70:
+        verified_status = "passed"
+    elif verified_score > 0:
+        verified_status = "in_progress"
+    else:
+        verified_status = payload.status if payload.status != "passed" else "failed"
+
     attempt = QuestionAttempt(
         user_id=current_user.id,
         question_id=question.id,
-        status=payload.status,
-        score=payload.score,
+        status=verified_status,
+        score=verified_score,
         feedback=payload.feedback,
     )
     db.add(attempt)

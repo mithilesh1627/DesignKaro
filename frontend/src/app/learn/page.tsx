@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
+import { API_BASE } from "@/lib/api";
+import { useAuthStore } from "@/lib/authStore";
 
 interface TopicItem {
   id: string;
@@ -41,15 +43,20 @@ export default function LearnIndexPage() {
   const [topics, setTopics] = useState<TopicItem[]>([]);
   const [selectedTrack, setSelectedTrack] = useState<string>("all");
   const [isLoading, setIsLoading] = useState(true);
+  const { accessToken } = useAuthStore();
 
   useEffect(() => {
     const fetchTopics = async () => {
       try {
         const url =
           selectedTrack === "all"
-            ? "http://127.0.0.1:8000/api/v1/topics"
-            : `http://127.0.0.1:8000/api/v1/topics?track=${selectedTrack}`;
-        const res = await fetch(url);
+            ? `${API_BASE}/api/v1/topics`
+            : `${API_BASE}/api/v1/topics?track=${selectedTrack}`;
+        const headers: Record<string, string> = {};
+        if (accessToken) {
+          headers["Authorization"] = `Bearer ${accessToken}`;
+        }
+        const res = await fetch(url, { headers });
         if (res.ok) {
           const data = await res.json();
           setTopics(data);

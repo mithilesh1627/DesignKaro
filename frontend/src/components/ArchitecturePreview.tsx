@@ -15,6 +15,7 @@ import {
   Radio,
   ArrowRight,
 } from "lucide-react";
+import { AiMentorDrawer } from "./AiMentorDrawer";
 
 interface NodeData {
   id: string;
@@ -111,6 +112,7 @@ export const ArchitecturePreview: React.FC = () => {
   const [selectedNodeId, setSelectedNodeId] = useState<string>("postgres");
   const [simTraffic, setSimTraffic] = useState<number>(25000);
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
+  const [isMentorOpen, setIsMentorOpen] = useState<boolean>(false);
 
   const selectedNode = NODES.find((n) => n.id === selectedNodeId) || NODES[0];
 
@@ -348,9 +350,12 @@ export const ArchitecturePreview: React.FC = () => {
               </p>
               <div className="mt-3 pt-2 border-t border-sky-500/20 flex items-center justify-between text-[11px] font-mono text-sky-400">
                 <span>Reasoning Level: Architectural</span>
-                <span className="hover:underline cursor-pointer flex items-center gap-1">
+                <button
+                  onClick={() => setIsMentorOpen(true)}
+                  className="hover:underline cursor-pointer flex items-center gap-1 text-sky-400 hover:text-sky-300 transition-colors"
+                >
                   Ask Mentor <ArrowRight className="h-3 w-3" />
-                </span>
+                </button>
               </div>
             </div>
           </div>
@@ -361,6 +366,11 @@ export const ArchitecturePreview: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <AiMentorDrawer
+        isOpen={isMentorOpen}
+        onClose={() => setIsMentorOpen(false)}
+      />
     </div>
   );
 };

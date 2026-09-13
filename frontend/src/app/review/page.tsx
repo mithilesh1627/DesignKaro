@@ -20,6 +20,8 @@ import {
 } from "lucide-react";
 import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
+import { API_BASE } from "@/lib/api";
+import { useSearchParams } from "next/navigation";
 
 interface DimensionScore {
   name: string;
@@ -45,10 +47,35 @@ interface ReviewResult {
   executive_summary: string;
 }
 
-export default function ReviewPage() {
+function ReviewContent() {
+  const searchParams = useSearchParams();
+  const designId = searchParams ? searchParams.get("designId") : null;
+
   const [review, setReview] = useState<ReviewResult | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [selectedPreset, setSelectedPreset] = useState<string>("tinyurl");
+  const [selectedPreset, setSelectedPreset] = useState<string>(designId ? "custom" : "tinyurl");
+  const [customDesignData, setCustomDesignData] = useState<any | null>(null);
+
+  useEffect(() => {
+    if (!designId) return;
+    const fetchCustomDesign = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/designs/${designId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setCustomDesignData({
+            title: data.title || "Custom Architecture",
+            scale_metadata: data.scale_metadata || { read_qps: 15000 },
+            graph_data: data.graph_data || { nodes: [], edges: [] },
+          });
+          setSelectedPreset("custom");
+        }
+      } catch (err) {
+        console.error("Failed to load custom design for review:", err);
+      }
+    };
+    fetchCustomDesign();
+  }, [designId]);
 
   const runEvaluation = async (presetKey: string) => {
     try {
@@ -96,9 +123,15 @@ export default function ReviewPage() {
         },
       };
 
-      const payload = sampleGraphs[presetKey] || sampleGraphs.tinyurl;
+      let payload = sampleGraphs[presetKey];
+      if (presetKey === "custom" && customDesignData) {
+        payload = customDesignData;
+      }
+      if (!payload) {
+        payload = sampleGraphs.tinyurl;
+      }
 
-      const res = await fetch("http://127.0.0.1:8000/api/v1/review/evaluate", {
+      const res = await fetch(`${API_BASE}/api/v1/review/evaluate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -117,7 +150,7 @@ export default function ReviewPage() {
 
   useEffect(() => {
     runEvaluation(selectedPreset);
-  }, [selectedPreset]);
+  }, [selectedPreset, customDesignData]);
 
   return (
     <>
@@ -135,27 +168,27 @@ export default function ReviewPage() {
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
-            <div className="flex items-center gap-2 text-xs font-mono text-sky-400 mb-1">
+            <div className="flex items-center gap-2 text-xs font-mono text-cyan-400 mb-1.5">
               <Award className="h-4 w-4" />
-              <span>PHASE 9: AI ARCHITECTURE REVIEW</span>
+              <span>ARCHITECTURAL HEALTH &amp; COMPLIANCE</span>
             </div>
-            <h1 className="text-3xl font-extrabold text-white tracking-tight">
+            <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
               9-Dimension Architecture Review
             </h1>
-            <p className="text-sm text-slate-400 mt-1">
-              Automated Staff-level architectural evaluation across scalability, fault tolerance, latency, and cost efficiency.
+            <p className="text-sm text-slate-400 mt-1 max-w-3xl leading-relaxed">
+              Automated Staff-level architectural evaluation across scalability, fault tolerance, latency, data integrity, and cost efficiency.
             </p>
           </div>
 
           <div className="flex items-center gap-3">
             {/* Preset Toggle */}
-            <div className="flex items-center gap-1 p-1 rounded-lg bg-surface-900 border border-slate-800 text-xs font-mono">
-              <span className="text-slate-500 px-2">Preset:</span>
+            <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-slate-900 border border-white/[0.08] text-xs font-mono">
+              <span className="text-slate-500 px-2 text-[10px] uppercase font-bold tracking-wider">Preset:</span>
               <button
                 onClick={() => setSelectedPreset("tinyurl")}
-                className={`px-3 py-1 rounded transition-colors ${
+                className={`px-3 py-1.5 rounded-xl transition-all ${
                   selectedPreset === "tinyurl"
-                    ? "bg-sky-500 text-slate-950 font-bold"
+                    ? "bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/20"
                     : "text-slate-400 hover:text-white"
                 }`}
               >
@@ -163,9 +196,9 @@ export default function ReviewPage() {
               </button>
               <button
                 onClick={() => setSelectedPreset("monolith")}
-                className={`px-3 py-1 rounded transition-colors ${
+                className={`px-3 py-1.5 rounded-xl transition-all ${
                   selectedPreset === "monolith"
-                    ? "bg-rose-500 text-white font-bold"
+                    ? "bg-rose-500 text-white font-bold shadow-sm shadow-rose-500/20"
                     : "text-slate-400 hover:text-white"
                 }`}
               >
@@ -175,9 +208,9 @@ export default function ReviewPage() {
 
             <Link
               href="/design"
-              className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors border border-slate-700"
+              className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors border border-white/[0.08]"
             >
-              <Layers className="h-3.5 w-3.5" />
+              <Layers className="h-3.5 w-3.5 text-cyan-400" />
               <span>Open in Canvas</span>
             </Link>
           </div>
@@ -186,17 +219,17 @@ export default function ReviewPage() {
         {/* Content */}
         {isLoading ? (
           <div className="py-24 text-center">
-            <Loader2 className="h-8 w-8 text-sky-400 animate-spin mx-auto mb-3" />
+            <Loader2 className="h-8 w-8 text-cyan-400 animate-spin mx-auto mb-3" />
             <p className="text-sm font-mono text-slate-400">Compiling 9-dimension review scorecard...</p>
           </div>
         ) : review ? (
           <div className="space-y-8">
             {/* Executive Summary Card */}
-            <div className="p-6 rounded-2xl bg-surface-900/80 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl">
-              <div className="space-y-2 flex-1">
-                <div className="flex items-center gap-2">
+            <div className="p-8 rounded-3xl bg-slate-900/80 border border-white/[0.08] flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-2xl backdrop-blur-2xl">
+              <div className="space-y-3 flex-1">
+                <div className="flex items-center gap-2.5">
                   <span
-                    className={`text-xs font-mono font-extrabold uppercase px-2.5 py-0.5 rounded border ${
+                    className={`text-xs font-mono font-extrabold uppercase px-3 py-1 rounded-full border ${
                       review.overall_score >= 85
                         ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
                         : review.overall_score >= 65
@@ -206,25 +239,25 @@ export default function ReviewPage() {
                   >
                     Grade: {review.grade}
                   </span>
-                  <span className="text-xs font-mono text-slate-500">
-                    Deterministic Scorecard
+                  <span className="text-xs font-mono text-slate-400">
+                    Deterministic Architectural Audit
                   </span>
                 </div>
-                <h2 className="text-xl font-bold text-white">
-                  Executive Architectural Assessment
+                <h2 className="text-2xl font-bold font-display text-white tracking-tight">
+                  Executive Assessment &amp; Reliability Rating
                 </h2>
-                <p className="text-sm text-slate-300 leading-relaxed max-w-3xl">
+                <p className="text-sm text-slate-300 leading-relaxed max-w-3xl font-light">
                   {review.executive_summary}
                 </p>
               </div>
 
               {/* Score Gauge */}
-              <div className="flex flex-col items-center justify-center p-6 rounded-xl bg-slate-950 border border-slate-800 min-w-[180px] text-center shrink-0">
-                <div className="text-[11px] font-mono text-slate-500 uppercase tracking-wider mb-1">
+              <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-slate-950 border border-white/[0.06] min-w-[200px] text-center shrink-0">
+                <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1 font-semibold">
                   Overall Health
                 </div>
                 <div
-                  className={`text-4xl font-extrabold font-mono ${
+                  className={`text-5xl font-black font-mono ${
                     review.overall_score >= 85
                       ? "text-emerald-400"
                       : review.overall_score >= 65
@@ -233,18 +266,18 @@ export default function ReviewPage() {
                   }`}
                 >
                   {review.overall_score}
-                  <span className="text-xl text-slate-600">/100</span>
+                  <span className="text-2xl text-slate-600 font-normal">/100</span>
                 </div>
-                <div className="text-[10px] font-mono text-slate-400 mt-1">
+                <div className="text-[11px] font-mono text-slate-500 mt-1">
                   Across 9 Dimensions
                 </div>
               </div>
             </div>
 
             {/* 9 Dimensions Breakdown Grid */}
-            <div>
-              <h3 className="text-base font-bold text-white mb-4 flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-sky-400" />
+            <div className="space-y-4">
+              <h3 className="text-base font-bold text-white flex items-center gap-2 font-mono">
+                <TrendingUp className="h-4 w-4 text-cyan-400" />
                 <span>The 9 Architectural Dimensions</span>
               </h3>
 
@@ -252,11 +285,11 @@ export default function ReviewPage() {
                 {review.radar_scores.map((dim) => (
                   <div
                     key={dim.name}
-                    className="p-4 rounded-xl bg-surface-900/60 border border-slate-800/80 flex flex-col justify-between space-y-3"
+                    className="p-5 rounded-2xl bg-slate-900/60 border border-white/[0.08] hover:border-cyan-500/30 flex flex-col justify-between space-y-3.5 transition-all shadow-lg backdrop-blur-md"
                   >
                     <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-xs font-bold text-white">{dim.name}</span>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-white tracking-wide">{dim.name}</span>
                         <span
                           className={`text-xs font-mono font-bold ${
                             dim.score >= 80
@@ -271,9 +304,9 @@ export default function ReviewPage() {
                       </div>
 
                       {/* Progress Bar */}
-                      <div className="w-full h-1.5 rounded-full bg-slate-950 overflow-hidden mb-2">
+                      <div className="w-full h-1.5 rounded-full bg-slate-950 overflow-hidden mb-2.5">
                         <div
-                          className={`h-full rounded-full ${
+                          className={`h-full rounded-full transition-all duration-500 ${
                             dim.score >= 80
                               ? "bg-emerald-500"
                               : dim.score >= 65
@@ -284,14 +317,14 @@ export default function ReviewPage() {
                         />
                       </div>
 
-                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                      <p className="text-[11px] text-slate-400 leading-relaxed font-light">
                         {dim.analysis}
                       </p>
                     </div>
 
-                    <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between text-[10px] font-mono">
+                    <div className="pt-2.5 border-t border-white/[0.06] flex items-center justify-between text-[10px] font-mono">
                       <span className="text-slate-500">Verdict:</span>
-                      <span className="text-slate-300 font-semibold">{dim.verdict}</span>
+                      <span className="text-slate-200 font-semibold">{dim.verdict}</span>
                     </div>
                   </div>
                 ))}
@@ -301,7 +334,7 @@ export default function ReviewPage() {
             {/* Strengths & Critical Vulnerabilities */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Strengths */}
-              <div className="p-5 rounded-xl bg-surface-900/60 border border-slate-800 space-y-3">
+              <div className="p-6 rounded-3xl bg-slate-900/60 border border-white/[0.08] space-y-3.5 backdrop-blur-md">
                 <div className="flex items-center gap-2 text-xs font-mono font-bold text-emerald-400">
                   <CheckCircle2 className="h-4 w-4" />
                   <span>CORE ARCHITECTURAL STRENGTHS</span>
@@ -310,9 +343,9 @@ export default function ReviewPage() {
                   {review.strengths.map((str, idx) => (
                     <div
                       key={idx}
-                      className="p-3 rounded-lg bg-slate-950/60 border border-slate-800/80 text-xs text-slate-300 flex items-center gap-2"
+                      className="p-3.5 rounded-xl bg-slate-950/70 border border-white/[0.06] text-xs text-slate-300 flex items-center gap-2.5 font-light"
                     >
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                      <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
                       <span>{str}</span>
                     </div>
                   ))}
@@ -320,7 +353,7 @@ export default function ReviewPage() {
               </div>
 
               {/* Vulnerabilities */}
-              <div className="p-5 rounded-xl bg-surface-900/60 border border-slate-800 space-y-3">
+              <div className="p-6 rounded-3xl bg-slate-900/60 border border-white/[0.08] space-y-3.5 backdrop-blur-md">
                 <div className="flex items-center gap-2 text-xs font-mono font-bold text-rose-400">
                   <AlertTriangle className="h-4 w-4" />
                   <span>CRITICAL VULNERABILITIES</span>
@@ -329,9 +362,9 @@ export default function ReviewPage() {
                   {review.critical_vulnerabilities.map((vuln, idx) => (
                     <div
                       key={idx}
-                      className="p-3 rounded-lg bg-rose-500/5 border border-rose-500/20 text-xs text-rose-300 flex items-center gap-2"
+                      className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 flex items-center gap-2.5 font-light"
                     >
-                      <AlertTriangle className="h-3.5 w-3.5 text-rose-400 shrink-0" />
+                      <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0" />
                       <span>{vuln}</span>
                     </div>
                   ))}
@@ -340,8 +373,8 @@ export default function ReviewPage() {
             </div>
 
             {/* Actionable Remediation Plan */}
-            <div className="p-6 rounded-xl bg-surface-900/60 border border-slate-800 space-y-4">
-              <div className="flex items-center gap-2 text-xs font-mono font-bold text-sky-400">
+            <div className="p-6 sm:p-8 rounded-3xl bg-slate-900/80 border border-white/[0.08] space-y-4 shadow-xl backdrop-blur-xl">
+              <div className="flex items-center gap-2 text-xs font-mono font-bold text-cyan-400">
                 <ShieldCheck className="h-4 w-4" />
                 <span>ACTIONABLE REMEDIATION ROADMAP (STAFF RECOMMENDATIONS)</span>
               </div>
@@ -349,12 +382,12 @@ export default function ReviewPage() {
                 {review.actionable_remediation_plan.map((step, idx) => (
                   <div
                     key={idx}
-                    className="p-3 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-300 flex items-start gap-3"
+                    className="p-4 rounded-2xl bg-slate-950 border border-white/[0.06] text-xs text-slate-300 flex items-start gap-3.5 font-light leading-relaxed"
                   >
-                    <span className="font-mono text-sky-400 font-bold shrink-0">
-                      Step {idx + 1}:
+                    <span className="font-mono text-cyan-400 font-bold shrink-0 px-2 py-0.5 rounded-md bg-cyan-500/10 border border-cyan-500/20 text-[10px]">
+                      STEP {idx + 1}
                     </span>
-                    <span className="leading-relaxed">{step}</span>
+                    <span>{step}</span>
                   </div>
                 ))}
               </div>
@@ -364,5 +397,19 @@ export default function ReviewPage() {
       </main>
       <Footer />
     </>
+  );
+}
+
+export default function ReviewPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="min-h-screen bg-surface-950 flex items-center justify-center text-xs font-mono text-slate-400">
+          Loading Architecture Review...
+        </div>
+      }
+    >
+      <ReviewContent />
+    </React.Suspense>
   );
 }
