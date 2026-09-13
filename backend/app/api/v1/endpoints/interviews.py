@@ -1,3 +1,11 @@
+from typing import Annotated
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.app.api.deps import get_current_user_optional
+from backend.app.core.database import get_db
+from backend.app.models.user import User
 from backend.app.schemas.interview import (
     InterviewFinishResponse,
     InterviewStartRequest,
@@ -6,7 +14,7 @@ from backend.app.schemas.interview import (
     InterviewTurnResponse,
 )
 from backend.app.services.interview_engine import interview_engine
-from fastapi import APIRouter
+from backend.app.services.llm.providers.factory import get_active_provider_for_user
 
 router = APIRouter()
 
@@ -23,9 +31,12 @@ async def start_interview_session(
 async def send_interview_message(
     session_id: str,
     payload: InterviewTurnRequest,
+    current_user: Annotated[User | None, Depends(get_current_user_optional)] = None,
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
 ) -> InterviewTurnResponse:
     """Submit candidate response and receive interviewer critique and next stage."""
-    return interview_engine.process_turn(session_id, payload)
+    provider = await get_active_provider_for_user(db=db, user=current_user)
+    return await interview_engine.process_turn_async(session_id, payload, provider=provider)
 
 
 @router.post("/{session_id}/finish", response_model=InterviewFinishResponse)

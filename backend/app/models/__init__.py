@@ -14,6 +14,7 @@ from backend.app.models.knowledge import (
     UserNote,
 )
 from backend.app.models.learning import Lesson, Topic, TopicDependency, UserLessonProgress
+from backend.app.models.llm import UserLLMProvider
 from backend.app.models.practice import Question, QuestionAttempt
 from backend.app.models.simulation import Simulation, SimulationEvent
 from backend.app.models.skill import Achievement, Skill, UserAchievement, UserSkill
@@ -23,6 +24,7 @@ __all__ = [
     "Base",
     "User",
     "UserProfile",
+    "UserLLMProvider",
     "AuditLog",
     "Topic",
     "TopicDependency",

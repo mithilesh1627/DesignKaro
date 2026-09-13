@@ -8,6 +8,7 @@ from backend.app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
     from backend.app.models.design import Design
+    from backend.app.models.llm import UserLLMProvider
     from backend.app.models.practice import QuestionAttempt
 
 
@@ -28,6 +29,9 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         "QuestionAttempt", back_populates="user", cascade="all, delete-orphan"
     )
     audit_logs: Mapped[list["AuditLog"]] = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
+    llm_providers: Mapped[list["UserLLMProvider"]] = relationship(
+        "UserLLMProvider", back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class UserProfile(Base, UUIDPrimaryKeyMixin, TimestampMixin):

@@ -1,3 +1,6 @@
+import json
+import logging
+from collections.abc import AsyncIterator
 
 from backend.app.schemas.mentor import (
     MentorChatRequest,
@@ -5,104 +8,231 @@ from backend.app.schemas.mentor import (
     MentorHintRequest,
     MentorHintResponse,
 )
+from backend.app.services.llm.interface import BaseLLMProvider
+from backend.app.services.llm.models import ChatMessage
+from backend.app.services.llm.service import llm_service
+
+logger = logging.getLogger("designkaro.mentor")
+
+
+from backend.app.services.llm.parser import (
+    create_heuristic_mentor_response,
+    extract_json_payload,
+    normalize_mentor_response,
+    render_mentor_response_to_markdown,
+)
 
 
 class SeniorEngineerMentorService:
     """
     Staff / Principal Distributed Systems Architect Mentor.
     Delivers multi-tier Socratic guidance with first-principles trade-off analysis.
-    Works reliably both with external LLM providers and with offline deterministic architectural heuristics.
+    Works reliably both with real LLMs (Ollama dev / BYOK prod) and with offline deterministic heuristics.
     """
 
-    def generate_chat_response(self, request: MentorChatRequest) -> MentorChatResponse:
+    def generate_heuristic_response(self, request: MentorChatRequest) -> MentorChatResponse:
+        """
+        Deterministic, offline Socratic heuristics.
+        Analyzes canvas graph topology and keyword patterns with zero external API calls.
+        """
         user_msg = ""
         for m in reversed(request.messages):
             if m.role == "user":
-                user_msg = m.content.lower()
+                user_msg = m.content
                 break
 
-        graph = request.graph_data
+        structured = create_heuristic_mentor_response(user_msg, request.graph_data, request.messages)
+        markdown_reply = render_mentor_response_to_markdown(structured)
 
-        # Heuristic Socratic reasoning engine
-        reply_lines = []
         followups = []
-        dimension = "Scalability & Invariants"  
+        if structured.next_question:
+            followups.append(structured.next_question)
 
-        # Check graph topology if available
-        if graph and graph.nodes:
-            node_types = {n.type for n in graph.nodes}
-            has_db = "relational_db" in node_types or "nosql_db" in node_types
-            has_cache = "cache" in node_types
-            has_queue = "queue" in node_types
-            has_gw = "gateway" in node_types or "load_balancer" in node_types
-
-            if not has_gw:
-                reply_lines.append(
-                    "Looking at your canvas, your clients connect directly to services without an Ingress Proxy. How will you enforce authentication, TLS termination, and rate-limiting without duplicating logic across every single microservice?"
-                )
-                followups.append("Should I use Envoy or Nginx for API Gateway?")
-
-            if not has_cache and has_db:
-                reply_lines.append(
-                    "You have persistent storage without an In-Memory Caching tier. If 80% of your requests are repetitive reads (Pareto principle), why make your database perform expensive B-Tree disk seeks for immutable or hot data?"
-                )
-                followups.append("How should we handle cache invalidation on write?")
-
-            if not has_queue:
-                reply_lines.append(
-                    "Are you executing write-heavy tasks (such as analytics, notifications, or image resizing) synchronously in the client request cycle? What happens to client p99 latency when downstream third-party APIs slow down?"
-                )
-                followups.append("What is the trade-off between Kafka and RabbitMQ here?")
-
-        # Contextual inquiry response
-        if "cache" in user_msg or "redis" in user_msg:
-            reply_lines.append(
-                "When introducing Redis, the fundamental dilemma is consistency vs latency. Are you using **Cache-Aside** (lazy loading, stale reads possible during race conditions) or **Write-Through** (consistent, but write latency includes cache + DB)? How do you prevent cache stampedes when a high-traffic key expires?"
-            )
+        q_lower = (user_msg or "").lower()
+        if "envoy" in q_lower or "gateway" in q_lower:
+            followups.extend([
+                "How does Envoy compare to Nginx for ingress routing?",
+                "What happens if our API Gateway crashes under peak load?",
+            ])
+        elif "little" in q_lower or "concurrency" in q_lower or "calculate" in q_lower:
+            followups.extend([
+                "What latency SLA should we target for p99 requests?",
+                "How does queuing theory apply to thread pool saturation?",
+            ])
+        elif "redis" in q_lower or "cache" in q_lower:
             followups.extend([
                 "How does Probabilistic Early Expiration (XFetch) prevent cache stampedes?",
-                "Should we use Redis Sentinel or Redis Cluster for 100k QPS?",
+                "Should we deploy PgBouncer or Redis to reduce database read pressure?",
             ])
-            dimension = "Caching & Consistency"
-
-        elif "database" in user_msg or "sql" in user_msg or "nosql" in user_msg:
-            reply_lines.append(
-                "Let's look at access patterns. Relational DBs (PostgreSQL) give ACID transactions and rich relational indexes at the cost of vertical scaling limits and replication lag. Wide-column stores (Cassandra/ScyllaDB) give infinite linear write scalability with peer-to-peer gossip, but you cannot perform ad-hoc JOINs. Does your access pattern require join flexibility or high-write append throughput?"
-            )
+        elif "10 million" in q_lower or "10m" in q_lower or "scale" in q_lower:
             followups.extend([
-                "How do we partition the database table to avoid hot partitions?",
-                "When should we transition from read replicas to database sharding?",
+                "How do we partition our database across multiple shards?",
+                "Where should we place our caching layer for 10M users?",
             ])
-            dimension = "Storage & Partitioning"
-
-        elif "kafka" in user_msg or "queue" in user_msg:
-            reply_lines.append(
-                "In message queuing, remember the three delivery guarantees: *At-most-once*, *At-least-once*, and *Exactly-once*. In real-world distributed systems, almost everyone builds on **At-least-once + Idempotent Consumers**. How does your consumer handle duplicated delivery?"
-            )
+        elif "spof" in q_lower or "failure" in q_lower:
             followups.extend([
-                "How do we structure idempotency keys in payment processing?",
-                "What happens when consumer lag spikes to 100,000 messages?",
+                "How do we configure active-active multi-AZ replication?",
+                "What is our blast radius if our primary database fails?",
             ])
-            dimension = "Asynchronous Decoupling & Reliability"
-
-        elif not reply_lines:
-            reply_lines.append(
-                "As a Senior Architect, my first question is: **What are your scale invariants?**\n"
-                "1. What is your Read-to-Write ratio?\n"
-                "2. What is your p99 latency SLA (e.g. <50ms)?\n"
-                "3. What breaks first when peak traffic surges 5x?\n\n"
-                "Walk me through the lifecycle of a single request from the moment it leaves the client's mobile app to the database transaction commit."
-            )
+        else:
             followups.extend([
-                "How do we calculate Little's Law for concurrent connections?",
-                "What is our single point of failure in this design?",
+                "What read/write ratio are we optimizing for?",
+                "What is our strict latency budget for the critical path?",
             ])
 
         return MentorChatResponse(
-            reply="\n\n".join(reply_lines),
+            reply=markdown_reply,
+            structured_response=structured,
             suggested_followups=followups[:3],
-            dimension_focus=dimension,
+            dimension_focus=structured.title,
+            llm_provider="heuristic-engine",
+            fallback_used=True,
         )
+
+    def generate_chat_response(self, request: MentorChatRequest) -> MentorChatResponse:
+        """Synchronous wrapper for backward compatibility and test execution."""
+        return self.generate_heuristic_response(request)
+
+    async def generate_chat_response_async(
+        self,
+        request: MentorChatRequest,
+        provider: BaseLLMProvider | None = None,
+    ) -> MentorChatResponse:
+        """
+        Asynchronously generates a structured Socratic mentoring response.
+        If the LLM is offline or fails, seamlessly falls back to the deterministic heuristic engine.
+        """
+        # Convert messages to ChatMessage objects
+        messages = [
+            ChatMessage(
+                role="assistant" if m.role == "assistant" else "user" if m.role == "user" else "system",
+                content=m.content,
+            )
+            for m in request.messages
+        ]
+
+        heuristic = self.generate_heuristic_response(request)
+        user_msg = ""
+        for m in reversed(request.messages):
+            if m.role == "user":
+                user_msg = m.content
+                break
+
+        try:
+            llm_resp = await llm_service.generate_mentor_chat(
+                messages=messages,
+                graph_data=request.graph_data,
+                user_skill_level=request.user_skill_level,
+                provider=provider,
+                fallback_fn=lambda: heuristic.reply,
+            )
+
+            # If fallback was used by LLM service directly
+            if llm_resp.fallback_used:
+                return heuristic
+
+            parsed_json = extract_json_payload(llm_resp.content)
+            structured = normalize_mentor_response(
+                data=parsed_json,
+                user_query=user_msg,
+                graph_data=request.graph_data,
+                history=request.messages,
+                fallback_fn=lambda: heuristic.structured_response,
+            )
+            markdown_reply = render_mentor_response_to_markdown(structured)
+
+            followups = heuristic.suggested_followups
+            if structured.next_question:
+                followups = [structured.next_question] + [f for f in followups if f != structured.next_question]
+
+            return MentorChatResponse(
+                reply=markdown_reply,
+                structured_response=structured,
+                suggested_followups=followups[:3],
+                dimension_focus=structured.title,
+                llm_provider=llm_resp.provider,
+                fallback_used=False,
+            )
+        except Exception as exc:
+            logger.warning("LLM mentor chat failed, using deterministic heuristic fallback: %s", exc)
+            return heuristic
+
+    async def stream_chat_response_async(
+        self,
+        request: MentorChatRequest,
+        provider: BaseLLMProvider | None = None,
+    ) -> AsyncIterator[str]:
+        """
+        Streams Socratic mentoring tokens via Server-Sent Events (SSE).
+        Accumulates raw tokens, normalizes structured response, and delivers clean presentation.
+        """
+        messages = [
+            ChatMessage(
+                role="assistant" if m.role == "assistant" else "user" if m.role == "user" else "system",
+                content=m.content,
+            )
+            for m in request.messages
+        ]
+
+        heuristic = self.generate_heuristic_response(request)
+        active_provider = provider or llm_service.get_default_provider()
+        user_msg = ""
+        for m in reversed(request.messages):
+            if m.role == "user":
+                user_msg = m.content
+                break
+
+        try:
+            accumulated_chunks = []
+            async for chunk in llm_service.stream_mentor_chat(
+                messages=messages,
+                graph_data=request.graph_data,
+                user_skill_level=request.user_skill_level,
+                provider=active_provider,
+                fallback_fn=lambda: heuristic.reply,
+            ):
+                if chunk.delta:
+                    accumulated_chunks.append(chunk.delta)
+                    # Stream raw progress delta
+                    payload = {
+                        "delta": chunk.delta,
+                        "provider": active_provider.provider_name,
+                        "finish_reason": None,
+                    }
+                    yield f"data: {json.dumps(payload)}\n\n"
+
+            raw_full_content = "".join(accumulated_chunks)
+            parsed_json = extract_json_payload(raw_full_content)
+            structured = normalize_mentor_response(
+                data=parsed_json,
+                user_query=user_msg,
+                graph_data=request.graph_data,
+                history=request.messages,
+                fallback_fn=lambda: heuristic.structured_response,
+            )
+            markdown_reply = render_mentor_response_to_markdown(structured)
+
+            # Send final structured completion event
+            final_payload = {
+                "delta": "",
+                "provider": active_provider.provider_name,
+                "finish_reason": "stop",
+                "structured": structured.model_dump(),
+                "rendered_markdown": markdown_reply,
+            }
+            yield f"data: {json.dumps(final_payload)}\n\n"
+
+        except Exception as exc:
+            logger.warning("Stream failed, streaming fallback heuristic: %s", exc)
+            fallback_payload = {
+                "delta": heuristic.reply,
+                "provider": "heuristic-engine",
+                "finish_reason": "stop",
+                "fallback_used": True,
+                "structured": heuristic.structured_response.model_dump() if heuristic.structured_response else None,
+                "rendered_markdown": heuristic.reply,
+            }
+            yield f"data: {json.dumps(fallback_payload)}\n\n"
 
     def generate_hint(self, request: MentorHintRequest) -> MentorHintResponse:
         level = request.target_level

@@ -1,4 +1,4 @@
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -50,6 +50,30 @@ class Settings(BaseSettings):
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
+
+    # LLM Service Configuration
+    ALLOW_OLLAMA_IN_PRODUCTION: bool = False
+    LLM_PROVIDER: str = "ollama"
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "llama3.2:3b"
+    LLM_ENCRYPTION_KEY: str = ""
+    LLM_TIMEOUT_SECONDS: float = 30.0
+    LLM_MAX_INPUT_TOKENS: int = 4096
+    LLM_MAX_OUTPUT_TOKENS: int = 2048
+    LLM_DEFAULT_TEMPERATURE: float = 0.2
+
+    @model_validator(mode="after")
+    def validate_llm_provider_env(self) -> "Settings":
+        if (
+            self.ENVIRONMENT == "production"
+            and self.LLM_PROVIDER.lower() == "ollama"
+            and not self.ALLOW_OLLAMA_IN_PRODUCTION
+        ):
+            raise ValueError(
+                "Production environment cannot use 'ollama' as default LLM provider. "
+                "Use LLM_PROVIDER='byok' for user-provided API keys."
+            )
+        return self
 
 
 settings = Settings()

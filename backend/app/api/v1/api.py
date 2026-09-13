@@ -7,6 +7,7 @@ from backend.app.api.v1.endpoints import (
     interviews,
     knowledge,
     learning,
+    llm,
     mentor,
     problems,
     review,
@@ -20,6 +21,7 @@ api_router = APIRouter()
 # Core system endpoints
 api_router.include_router(health.router, tags=["Health & System Telemetry"])
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication & Profiles"])
+api_router.include_router(llm.router, prefix="/llm", tags=["LLM Engine & BYOK Management"])
 api_router.include_router(learning.router, tags=["Learning Engine"])
 api_router.include_router(problems.router, prefix="/problems", tags=["Practice Engine"])
 api_router.include_router(designs.router, prefix="/designs", tags=["Architecture Canvas & Validation"])

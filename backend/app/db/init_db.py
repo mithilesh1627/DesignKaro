@@ -14,6 +14,7 @@ from backend.app.models import (
     Skill,
     Topic,
     User,
+    UserLLMProvider,
     UserProfile,
     UserSkill,
 )

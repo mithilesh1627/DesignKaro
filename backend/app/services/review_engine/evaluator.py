@@ -202,5 +202,36 @@ class ArchitectureReviewEngine:
             executive_summary=summary,
         )
 
+    async def evaluate_architecture_async(
+        self,
+        request: ArchitectureReviewRequest,
+        provider=None,
+    ) -> ArchitectureReviewResponse:
+        """
+        Asynchronously evaluates architecture across the 9 deterministic dimensions,
+        then enriches the executive summary using the active LLM provider.
+        """
+        base_review = self.evaluate_architecture(request)
+
+        try:
+            from backend.app.services.llm.service import llm_service
+
+            llm_resp = await llm_service.generate_review_summary(
+                graph_data=request.graph_data,
+                scale_metadata=request.scale_metadata,
+                violations=base_review.rule_violations,
+                rubric_scores=base_review.radar_scores,
+                overall_score=base_review.overall_score,
+                grade=base_review.grade,
+                provider=provider,
+                fallback_fn=lambda: base_review.executive_summary,
+            )
+            if llm_resp and llm_resp.content and not llm_resp.fallback_used:
+                base_review.executive_summary = llm_resp.content
+        except Exception:
+            pass  # Retain deterministic summary on error
+
+        return base_review
+
 
 review_engine = ArchitectureReviewEngine()

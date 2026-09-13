@@ -180,6 +180,47 @@ class SystemDesignInterviewEngine:
             feedback_notes=notes,
         )
 
+    async def process_turn_async(
+        self,
+        session_id: str,
+        req: InterviewTurnRequest,
+        provider=None,
+    ) -> InterviewTurnResponse:
+        """
+        Asynchronously processes turn: calculates deterministic scores and stage transitions,
+        then augments conversational probing via the active LLM provider.
+        """
+        turn_response = self.process_turn(session_id, req)
+
+        # Do not augment gibberish answers; maintain strict redirection
+        user_msg = (req.message or "").strip().lower()
+        if len(user_msg) < 8 or turn_response.hiring_signal == "No Hire":
+            return turn_response
+
+        session = self.sessions.get(session_id, {})
+        title = session.get("title", "System Design")
+        scenario = f"Architect a production-grade system for {title} handling 100M+ users."
+        turn_history = session.get("turns", [])
+
+        try:
+            from backend.app.services.llm.service import llm_service
+
+            llm_resp = await llm_service.generate_interview_turn(
+                stage=req.current_stage,
+                stage_name=STAGES.get(req.current_stage, "Design Stage"),
+                candidate_message=req.message,
+                scenario_prompt=scenario,
+                turn_history=turn_history,
+                provider=provider,
+                fallback_fn=lambda: turn_response.interviewer_reply,
+            )
+            if llm_resp and llm_resp.content and not llm_resp.fallback_used:
+                turn_response.interviewer_reply = llm_resp.content
+        except Exception:
+            pass  # Fall back to calibrated deterministic reply
+
+        return turn_response
+
     def finish_interview(self, session_id: str) -> InterviewFinishResponse:
         session = self.sessions.get(session_id, {})
         scores = session.get("scores", {})
