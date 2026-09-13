@@ -13,14 +13,134 @@ from backend.app.models import (
     Question,
     Skill,
     Topic,
+    TopicDependency,
     User,
-    UserLLMProvider,
     UserProfile,
     UserSkill,
 )
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger("designkaro.seed")
+
+# 11 Canonical Skills
+CORE_SKILLS_DATA = [
+    ("fundamentals", "System Fundamentals", "Core", "Latency, throughput, CAP theorem, and SLA design.", 100),
+    ("networking", "Networking & Routing", "Compute", "L4/L7 routing, reverse proxies, and API gateways.", 100),
+    ("scalability", "Scalability & Elasticity", "Compute", "Horizontal scaling, load balancing algorithms, and autoscaling.", 100),
+    ("caching", "Distributed Caching", "Storage", "Cache-aside, write-through, LRU/LFU eviction, Redis cluster.", 100),
+    ("databases", "Database Scaling", "Storage", "Sharding, consistent hashing, read replicas, and indexing.", 100),
+    ("messaging", "Event Streaming & Queues", "Compute", "Kafka partitioning, consumer groups, backpressure, idempotency.", 100),
+    ("consensus", "Distributed Consensus", "Core", "Raft, Paxos, two-phase commit, and quorum consistency.", 100),
+    ("reliability", "Reliability & Resiliency", "Operations", "SPOF elimination, circuit breakers, rate limiting, chaos engineering.", 100),
+    ("observability", "Observability & Telemetry", "Operations", "Distributed tracing, OpenTelemetry, metrics, p99 latency alerts.", 100),
+    ("security", "Security & Zero Trust", "Security", "mTLS, SPIFFE identity, OAuth2, and defense in depth.", 100),
+    ("ml-systems", "ML System Design", "AI", "Feature stores, vector search, online model serving, and embeddings.", 100),
+]
+
+# 11 Canonical Topics
+CORE_TOPICS_DATA = [
+    ("fundamentals", "System Design Fundamentals", "Core concepts of latency, throughput, and CAP theorem.", "beginner", 1, "BookOpen"),
+    ("networking-routing", "Networking & Request Routing", "L4 vs L7 routing, Envoy API Gateways, and reverse proxies.", "intermediate", 2, "Globe"),
+    ("scalability", "Scalability & Elasticity", "Horizontal scaling, load balancing algorithms, and autoscaling.", "intermediate", 3, "Layers"),
+    ("distributed-caching", "Distributed Caching & Redis", "In-memory caching architectures and invalidation.", "intermediate", 4, "Zap"),
+    ("database-sharding", "Database Sharding & Replication", "Horizontal partitioning schemes and consistent hashing.", "intermediate", 5, "Database"),
+    ("event-streaming", "Event Streaming with Kafka", "Asynchronous pipelines, queues, and decoupled microservices.", "intermediate", 6, "Radio"),
+    ("distributed-consensus", "Distributed Systems & Consensus", "Raft consensus, leader election, and quorum replication.", "advanced", 7, "Cpu"),
+    ("reliability-fault-tolerance", "Reliability & Fault Tolerance", "Circuit breakers, rate limiting, and failure containment.", "advanced", 8, "ShieldAlert"),
+    ("observability-telemetry", "Observability & Telemetry", "Distributed tracing, context propagation, and OpenTelemetry.", "intermediate", 9, "Activity"),
+    ("security-zero-trust", "Security & Zero Trust", "Mutual TLS, identity management, and perimeter defense.", "advanced", 10, "Lock"),
+    ("ml-serving", "ML Inference & Feature Stores", "Low-latency model serving, embeddings, and vector databases.", "ml", 11, "Brain"),
+]
+
+# Prerequisite Dependencies DAG
+TOPIC_DEPENDENCIES_DATA = [
+    ("networking-routing", "fundamentals"),
+    ("scalability", "fundamentals"),
+    ("distributed-caching", "fundamentals"),
+    ("database-sharding", "fundamentals"),
+    ("event-streaming", "fundamentals"),
+    ("distributed-consensus", "database-sharding"),
+    ("reliability-fault-tolerance", "distributed-caching"),
+    ("reliability-fault-tolerance", "database-sharding"),
+    ("observability-telemetry", "fundamentals"),
+    ("security-zero-trust", "networking-routing"),
+    ("ml-serving", "fundamentals"),
+    ("ml-serving", "distributed-caching"),
+]
+
+
+async def seed_curriculum(session: AsyncSession, demo_user: User | None = None):
+    """Ensures all 11 skills, 11 topics, lessons, and topic dependencies are seeded idempotently."""
+    # 1. Ensure Skills
+    existing_skills_res = await session.execute(select(Skill))
+    existing_skills = {s.slug: s for s in existing_skills_res.scalars().all()}
+    created_skills = []
+    for slug, name, cat, desc, max_score in CORE_SKILLS_DATA:
+        if slug not in existing_skills:
+            sk = Skill(slug=slug, name=name, category=cat, description=desc, max_score=max_score)
+            session.add(sk)
+            existing_skills[slug] = sk
+            created_skills.append(sk)
+        else:
+            created_skills.append(existing_skills[slug])
+    await session.flush()
+
+    if demo_user:
+        existing_us_res = await session.execute(
+            select(UserSkill.skill_id).where(UserSkill.user_id == demo_user.id)
+        )
+        existing_us_ids = set(existing_us_res.scalars().all())
+        for sk in created_skills:
+            if sk.id not in existing_us_ids:
+                us = UserSkill(user_id=demo_user.id, skill_id=sk.id, mastery_score=85)
+                session.add(us)
+
+    # 2. Ensure Topics
+    existing_topics_res = await session.execute(select(Topic))
+    existing_topics = {t.slug: t for t in existing_topics_res.scalars().all()}
+    for slug, title, desc, track, order, icon in CORE_TOPICS_DATA:
+        if slug not in existing_topics:
+            top = Topic(
+                slug=slug,
+                title=title,
+                description=desc,
+                track=track,
+                order_index=order,
+                icon=icon,
+            )
+            session.add(top)
+            existing_topics[slug] = top
+    await session.flush()
+
+    # 3. Ensure Lessons
+    existing_lessons_res = await session.execute(select(Lesson.slug))
+    existing_lesson_slugs = set(existing_lessons_res.scalars().all())
+    for item in LESSONS_SEED_DATA:
+        if item["slug"] not in existing_lesson_slugs:
+            t_slug = item["topic_slug"]
+            if t_slug in existing_topics:
+                lesson_obj = Lesson(
+                    topic_id=existing_topics[t_slug].id,
+                    slug=item["slug"],
+                    title=item["title"],
+                    content_markdown=item["content_markdown"],
+                    estimated_minutes=item["estimated_minutes"],
+                    order_index=item["order_index"],
+                )
+                session.add(lesson_obj)
+    await session.flush()
+
+    # 4. Ensure Topic Dependencies
+    existing_deps_res = await session.execute(select(TopicDependency))
+    existing_dep_pairs = {(d.topic_id, d.prerequisite_topic_id) for d in existing_deps_res.scalars().all()}
+    for child_slug, parent_slug in TOPIC_DEPENDENCIES_DATA:
+        if child_slug in existing_topics and parent_slug in existing_topics:
+            c_id = existing_topics[child_slug].id
+            p_id = existing_topics[parent_slug].id
+            if (c_id, p_id) not in existing_dep_pairs:
+                session.add(TopicDependency(topic_id=c_id, prerequisite_topic_id=p_id))
+    await session.flush()
 
 
 async def init_db():
@@ -59,69 +179,8 @@ async def init_db():
             )
             session.add(demo_profile)
 
-            # 2. Core Skills
-            skills_data = [
-                (
-                    "fundamentals",
-                    "System Fundamentals",
-                    "Core",
-                    "Latency, throughput, CAP theorem, and SLA design.",
-                    100,
-                ),
-                (
-                    "caching",
-                    "Distributed Caching",
-                    "Storage",
-                    "Cache-aside, write-through, LRU/LFU eviction, Redis cluster.",
-                    100,
-                ),
-                (
-                    "databases",
-                    "Database Scaling",
-                    "Storage",
-                    "Sharding, consistent hashing, read replicas, and indexing.",
-                    100,
-                ),
-                (
-                    "messaging",
-                    "Event Streaming & Queues",
-                    "Compute",
-                    "Kafka partitioning, consumer groups, backpressure, idempotency.",
-                    100,
-                ),
-                (
-                    "reliability",
-                    "Reliability & Resiliency",
-                    "Operations",
-                    "SPOF elimination, circuit breakers, rate limiting, chaos engineering.",
-                    100,
-                ),
-                (
-                    "consensus",
-                    "Distributed Consensus",
-                    "Core",
-                    "Raft, Paxos, two-phase commit, and quorum consistency.",
-                    100,
-                ),
-                (
-                    "ml-systems",
-                    "ML System Design",
-                    "AI",
-                    "Feature stores, vector search, online model serving, and embeddings.",
-                    100,
-                ),
-            ]
-            created_skills = []
-            for slug, name, cat, desc, max_score in skills_data:
-                sk = Skill(slug=slug, name=name, category=cat, description=desc, max_score=max_score)
-                session.add(sk)
-                created_skills.append(sk)
-            await session.flush()
-
-            # Attach User Skills
-            for sk in created_skills:
-                us = UserSkill(user_id=demo_user.id, skill_id=sk.id, mastery_score=85)
-                session.add(us)
+            # 2. Seed All Canonical Skills, Topics, Lessons, and Dependencies
+            await seed_curriculum(session, demo_user)
 
             # 3. Core Achievements
             achievements_data = [
@@ -158,79 +217,7 @@ async def init_db():
                 ach = Achievement(slug=slug, name=name, description=desc, badge_icon=icon, xp_reward=xp)
                 session.add(ach)
 
-            # 4. Core Topics
-            topics_data = [
-                (
-                    "fundamentals",
-                    "System Design Fundamentals",
-                    "Core concepts of latency, throughput, and CAP theorem.",
-                    "beginner",
-                    1,
-                    "BookOpen",
-                ),
-                (
-                    "distributed-caching",
-                    "Distributed Caching & Redis",
-                    "In-memory caching architectures and invalidation.",
-                    "intermediate",
-                    2,
-                    "Zap",
-                ),
-                (
-                    "database-sharding",
-                    "Database Sharding & Replication",
-                    "Horizontal partitioning schemes and consistent hashing.",
-                    "intermediate",
-                    3,
-                    "Database",
-                ),
-                (
-                    "event-streaming",
-                    "Event Streaming with Kafka",
-                    "Asynchronous pipelines, queues, and decoupled microservices.",
-                    "intermediate",
-                    4,
-                    "Layers",
-                ),
-                (
-                    "ml-serving",
-                    "ML Inference & Feature Stores",
-                    "Low-latency model serving, embeddings, and vector databases.",
-                    "ml",
-                    5,
-                    "Cpu",
-                ),
-            ]
-            topic_map = {}
-            for slug, title, desc, track, order, icon in topics_data:
-                top = Topic(
-                    slug=slug,
-                    title=title,
-                    description=desc,
-                    track=track,
-                    order_index=order,
-                    icon=icon,
-                )
-                session.add(top)
-                topic_map[slug] = top
-
-            await session.flush()
-
-            # Seed Detailed 10-Dimension Lessons
-            for item in LESSONS_SEED_DATA:
-                t_slug = item["topic_slug"]
-                if t_slug in topic_map:
-                    lesson_obj = Lesson(
-                        topic_id=topic_map[t_slug].id,
-                        slug=item["slug"],
-                        title=item["title"],
-                        content_markdown=item["content_markdown"],
-                        estimated_minutes=item["estimated_minutes"],
-                        order_index=item["order_index"],
-                    )
-                    session.add(lesson_obj)
-
-            # 5. Core Practice Problem
+            # 4. Core Practice Problem
             sample_question = Question(
                 slug="design-tinyurl-10k-qps",
                 title="Design a High-Throughput URL Shortener (TinyURL)",
@@ -263,7 +250,7 @@ async def init_db():
             )
             session.add(sample_question)
 
-            # 6. Sample Architecture Design
+            # 5. Sample Architecture Design
             sample_design = Design(
                 user_id=demo_user.id,
                 title="Netflix Recommendation Engine (100M Users)",
@@ -297,7 +284,7 @@ async def init_db():
             )
             session.add(sample_version)
 
-            # Seed questions
+            # 6. Seed questions
             for q_data in QUESTIONS_SEED_DATA:
                 q_obj = Question(
                     slug=q_data["slug"],
@@ -316,28 +303,8 @@ async def init_db():
             await session.commit()
             logger.info("Database seeding complete!")
         else:
-            # Check if lessons need to be seeded
-            from sqlalchemy import func
-
-            lesson_count = (await session.execute(select(func.count(Lesson.id)))).scalar() or 0
-            if lesson_count == 0:
-                logger.info("Seeding missing lessons...")
-                topic_res = await session.execute(select(Topic))
-                topic_map = {t.slug: t for t in topic_res.scalars().all()}
-                for item in LESSONS_SEED_DATA:
-                    t_slug = item["topic_slug"]
-                    if t_slug in topic_map:
-                        lesson_obj = Lesson(
-                            topic_id=topic_map[t_slug].id,
-                            slug=item["slug"],
-                            title=item["title"],
-                            content_markdown=item["content_markdown"],
-                            estimated_minutes=item["estimated_minutes"],
-                            order_index=item["order_index"],
-                        )
-                        session.add(lesson_obj)
-                await session.commit()
-                logger.info("Lessons seeded successfully!")
+            logger.info("Existing database detected. Synchronizing curriculum and missing data...")
+            await seed_curriculum(session, existing_user)
 
             # Check if questions need to be seeded
             question_count = (await session.execute(select(func.count(Question.id)))).scalar() or 0
@@ -364,7 +331,8 @@ async def init_db():
                 await session.commit()
                 logger.info("Questions seeded successfully!")
             else:
-                logger.info("Questions already seeded.")
+                await session.commit()
+                logger.info("Curriculum and questions up-to-date.")
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ from backend.app.models.learning import Lesson, Topic, UserLessonProgress
 from backend.app.models.skill import Skill, UserSkill
 from backend.app.models.user import User
 from backend.app.schemas.learning import (
+    LearningOverviewResponse,
     LessonCompletionRequest,
     LessonCompletionResponse,
     LessonDetail,
@@ -17,6 +18,7 @@ from backend.app.schemas.learning import (
     TrackProgress,
     UserProgressResponse,
 )
+from backend.app.services.learning_engine import CANONICAL_LEARNING_METADATA, get_learning_overview
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,9 +54,16 @@ async def list_topics(
         )
         completed_lesson_ids = set(progress_res.scalars().all())
 
+    canonical_by_slug = {c["slug"]: c for c in CANONICAL_LEARNING_METADATA}
     response = []
     for t in topics:
-        c_count = sum(1 for l in t.lessons if l.id in completed_lesson_ids)
+        c_count = sum(1 for les in t.lessons if les.id in completed_lesson_ids)
+        total_l = len(t.lessons)
+        mastery_pct = round((c_count / total_l * 100.0), 1) if total_l > 0 else 0.0
+        c_meta = canonical_by_slug.get(t.slug, {})
+        diff = c_meta.get("difficulty", "Intermediate")
+        est_min = c_meta.get("estimated_minutes", sum(les.estimated_minutes for les in t.lessons) if t.lessons else 30)
+        first_lesson = t.lessons[0].slug if t.lessons else c_meta.get("first_lesson_slug")
         response.append(
             TopicSummary(
                 id=t.id,
@@ -66,6 +75,10 @@ async def list_topics(
                 icon=t.icon,
                 lesson_count=len(t.lessons),
                 completed_count=c_count,
+                difficulty=diff,
+                estimated_minutes=est_min,
+                mastery_percentage=mastery_pct,
+                first_lesson_slug=first_lesson,
             )
         )
     return response
@@ -118,7 +131,7 @@ async def get_topic(
         for lesson in topic.lessons
     ]
 
-    completed_count = sum(1 for l in topic.lessons if l.id in completed_lesson_ids)
+    completed_count = sum(1 for les in topic.lessons if les.id in completed_lesson_ids)
 
     return TopicDetail(
         id=topic.id,
@@ -278,6 +291,27 @@ async def complete_lesson(
         xp_earned=50,
         updated_mastery_score=mastery_score,
     )
+
+
+@router.get(
+    "/learning/overview",
+    response_model=LearningOverviewResponse,
+    summary="Get unified system design learning dashboard overview",
+)
+async def get_overview(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User | None, Depends(get_current_user_optional)] = None,
+):
+    """
+    Returns unified data for the Intelligent System Design Learning Dashboard:
+    - Overall mastery (0-100) and seniority title
+    - Active / resume lesson for Continue Learning
+    - 11 System design domains with real mastery scores & highlights
+    - 11 Structured learning paths with prerequisite lock states
+    - Deterministic recommendation engine
+    - Prerequisite dependency graphs
+    """
+    return await get_learning_overview(db, current_user)
 
 
 @router.get(

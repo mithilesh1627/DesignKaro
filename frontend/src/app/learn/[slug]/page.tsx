@@ -17,6 +17,11 @@ import {
   Check,
   X,
   HelpCircle,
+  Layers,
+  Compass,
+  ShieldCheck,
+  Split,
+  ChevronRight,
 } from "lucide-react";
 import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
@@ -44,6 +49,30 @@ interface MiniExercise {
   validate: (input: string) => { isCorrect: boolean; message: string };
   hint: string;
 }
+
+interface DecisionOption {
+  id: string;
+  label: string;
+  isOptimal: boolean;
+  tradeoffExplanation: string;
+}
+
+interface DecisionChallenge {
+  scenario: string;
+  requirement: string;
+  options: DecisionOption[];
+}
+
+const CONCEPTUAL_PROGRESSION = [
+  { id: "problem", label: "Problem" },
+  { id: "mental_model", label: "Mental Model" },
+  { id: "decision", label: "Decision" },
+  { id: "tradeoff", label: "Trade-off" },
+  { id: "failure", label: "Failure Modes" },
+  { id: "scale", label: "Scale Strategy" },
+  { id: "canvas", label: "Canvas Application" },
+  { id: "interview", label: "Staff Defense" },
+];
 
 const LESSON_EXERCISES: Record<string, MiniExercise> = {
   "latency-vs-throughput": {
@@ -141,6 +170,120 @@ const LESSON_EXERCISES: Record<string, MiniExercise> = {
     },
     hint: "One partition can be assigned to only one consumer per consumer group at a time.",
   },
+  "api-gateway-envoy-routing": {
+    question:
+      "An Envoy API Gateway receives 50,000 HTTPS QPS. 10% of requests require a fresh TLS 1.3 handshake taking 1.2ms of CPU. How many full TLS handshakes occur per second?",
+    placeholder: "e.g. 5000",
+    validate: (val: string) => {
+      const v = val.toLowerCase().replace(/[^0-9.]/g, "");
+      if (v === "5000" || v === "5,000") {
+        return {
+          isCorrect: true,
+          message: "Correct! 50,000 QPS × 10% = 5,000 full TLS handshakes per second (consuming ~6 CPU cores).",
+        };
+      }
+      return {
+        isCorrect: false,
+        message: "Try again! 50,000 total QPS × 10% (0.10) handshakes = ?",
+      };
+    },
+    hint: "Multiply total QPS (50,000) by non-reused handshake percentage (10%).",
+  },
+  "load-balancing-horizontal-scaling": {
+    question:
+      "Each application container comfortably processes 250 QPS. Traffic surges to 10,000 QPS during peak commute. How many replicas are required?",
+    placeholder: "e.g. 40",
+    validate: (val: string) => {
+      const v = val.toLowerCase().replace(/[^0-9.]/g, "");
+      if (v === "40") {
+        return {
+          isCorrect: true,
+          message: "Correct! 10,000 QPS ÷ 250 QPS/replica = 40 replicas (recommend 48 with 20% headroom).",
+        };
+      }
+      return {
+        isCorrect: false,
+        message: "Try again! Divide total peak QPS (10,000) by capacity per replica (250).",
+      };
+    },
+    hint: "Replicas = Peak QPS / Unit Capacity. 10,000 / 250 = ?",
+  },
+  "raft-distributed-consensus": {
+    question:
+      "In a 5-node Raft cluster, what is the minimum quorum of operational nodes required to safely commit log entries?",
+    placeholder: "e.g. 3",
+    validate: (val: string) => {
+      const v = val.toLowerCase().replace(/[^0-9.]/g, "");
+      if (v === "3") {
+        return {
+          isCorrect: true,
+          message: "Correct! Quorum = floor(N/2) + 1 = floor(5/2) + 1 = 3 nodes.",
+        };
+      }
+      return {
+        isCorrect: false,
+        message: "Incorrect. Raft requires a strict majority quorum: floor(5 / 2) + 1 = ?",
+      };
+    },
+    hint: "Majority formula: floor(N/2) + 1.",
+  },
+  "circuit-breakers-resilience": {
+    question:
+      "A client retries failed requests with exponential backoff base delay 100ms. What is the deterministic delay for attempt 3 before jitter (in ms)?",
+    placeholder: "e.g. 400",
+    validate: (val: string) => {
+      const v = val.toLowerCase().replace(/[^0-9.]/g, "");
+      if (v === "400") {
+        return {
+          isCorrect: true,
+          message: "Correct! Delay = 100ms × 2^(3-1) = 100 × 4 = 400ms.",
+        };
+      }
+      return {
+        isCorrect: false,
+        message: "Try again! Attempt 1: 100ms, Attempt 2: 200ms, Attempt 3: ?",
+      };
+    },
+    hint: "Exponential progression: 100ms, 200ms, 400ms, 800ms.",
+  },
+  "distributed-tracing-opentelemetry": {
+    question:
+      "A service processes 10,000 QPS with 10 spans per trace (500 bytes/span). What is the trace telemetry data rate in Megabytes/sec at 100% sampling?",
+    placeholder: "e.g. 50",
+    validate: (val: string) => {
+      const v = val.toLowerCase().replace(/[^0-9.]/g, "");
+      if (v === "50") {
+        return {
+          isCorrect: true,
+          message: "Correct! 10,000 QPS × 10 spans × 500 bytes = 50,000,000 bytes/s ≈ 50 MB/sec.",
+        };
+      }
+      return {
+        isCorrect: false,
+        message: "Try again! 10,000 × 10 × 500 = 50,000,000 bytes/s. Convert to MB/s (divide by 1,000,000).",
+      };
+    },
+    hint: "Multiply 10,000 requests by 5,000 bytes per trace = 50,000,000 bytes/s = 50 MB/s.",
+  },
+  "zero-trust-mtls-security": {
+    question:
+      "In Mutual TLS (mTLS), who must present a valid X.509 cryptographic certificate during the handshake?",
+    placeholder: "e.g. Both client and server",
+    validate: (val: string) => {
+      const v = val.toLowerCase().trim();
+      if (v.includes("both") || v.includes("client and server") || v.includes("two-way")) {
+        return {
+          isCorrect: true,
+          message: "Correct! Unlike standard TLS where only the server presents a certificate, mTLS requires BOTH client and server to verify identities.",
+        };
+      }
+      return {
+        isCorrect: false,
+        message: "Incorrect. In standard TLS only server presents a certificate. In MUTUAL TLS, who must present a certificate?",
+      };
+    },
+    hint: "The word 'Mutual' means two-way authentication: both client and server.",
+  },
   "low-latency-ml-inference": {
     question:
       "To reduce feature store lookup latency from 45ms to <2ms for real-time model inference, what tier of datastore must front the feature store?",
@@ -162,9 +305,319 @@ const LESSON_EXERCISES: Record<string, MiniExercise> = {
   },
 };
 
+const LESSON_DECISION_MATRICES: Record<string, DecisionChallenge> = {
+  "latency-vs-throughput": {
+    scenario:
+      "Flash traffic surge: 15,000 QPS with 40ms average database query latency. Worker containers are hitting thread exhaustion.",
+    requirement: "Increase concurrency headroom without crashing the backend database.",
+    options: [
+      {
+        id: "opt1",
+        label: "Increase application container thread pool size to 2,000 threads per instance",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. High thread counts increase Linux OS context-switching overhead and exhaust PostgreSQL database connection pools, causing lock thrashing.",
+      },
+      {
+        id: "opt2",
+        label: "Introduce Redis Cache-Aside for read requests with connection pool isolation",
+        isOptimal: true,
+        tradeoffExplanation:
+          "Optimal. Offloading 90% of reads to Redis drops average read latency from 40ms to 1.5ms, which by Little's Law reduces concurrent in-flight requests by ~95%.",
+      },
+      {
+        id: "opt3",
+        label: "Increase HTTP request timeout from 1s to 10s",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. Lengthening timeouts holds onto stalled worker threads 10x longer, rapidly compounding thread starvation and tail latency.",
+      },
+    ],
+  },
+  "cap-theorem-in-practice": {
+    scenario:
+      "A transatlantic fiber cut partitions US-East and EU-West datacenters. Two users simultaneously attempt to book the last available concert ticket.",
+    requirement: "Prevent double-booking while minimizing error impact.",
+    options: [
+      {
+        id: "opt1",
+        label: "Choose AP: accept local writes on both sides and resolve conflict later",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. Double-booking physical assets creates unresolvable real-world business conflict that cannot be merged with Last-Write-Wins.",
+      },
+      {
+        id: "opt2",
+        label: "Choose CP: lock seat reservation via majority quorum consensus",
+        isOptimal: true,
+        tradeoffExplanation:
+          "Optimal. A CP system rejects or stalls mutations on the minority isolated side, guaranteeing linearizability and zero double-bookings.",
+      },
+      {
+        id: "opt3",
+        label: "Choose CA: configure single database without network partition handling",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. 'CA' does not exist in distributed systems across wide-area networks; network partitions are physically inevitable.",
+      },
+    ],
+  },
+  "distributed-cache-redis": {
+    scenario:
+      "A viral celebrity post expires from Redis cache while receiving 80,000 concurrent read requests per second.",
+    requirement: "Prevent the Thundering Herd cache stampede from crashing the primary database.",
+    options: [
+      {
+        id: "opt1",
+        label: "Direct all 80,000 misses to query the primary PostgreSQL database concurrently",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. A textbook Cache Stampede / Thundering Herd: DB connections exhaust immediately and disk IOPS spike to 100%, causing total service outage.",
+      },
+      {
+        id: "opt2",
+        label: "Use Probabilistic Early Expiration (XFetch) and distributed mutex on miss",
+        isOptimal: true,
+        tradeoffExplanation:
+          "Optimal. Only one worker acquires the mutex to regenerate the cache value, while all other concurrent readers receive the stale cached copy or wait briefly.",
+      },
+      {
+        id: "opt3",
+        label: "Disable TTL expiration permanently across all keys",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. Eliminating TTLs leads to rapid Redis memory exhaustion (OOM) and prevents mutated data from ever getting refreshed.",
+      },
+    ],
+  },
+  "consistent-hashing-sharding": {
+    scenario:
+      "An order database table exceeds 10 Terabytes. Write throughput exceeds single-node NVMe IOPS limits (15,000 writes/sec).",
+    requirement: "Partition orders across 8 database shards with minimal rebalancing overhead.",
+    options: [
+      {
+        id: "opt1",
+        label: "Modulo hashing: shard = hash(order_id) % N",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. When changing the number of shards N, ~80% of all keys must be remigrated, causing massive operational downtime.",
+      },
+      {
+        id: "opt2",
+        label: "Consistent Hashing with virtual nodes (vnodes) on a 2^32 ring",
+        isOptimal: true,
+        tradeoffExplanation:
+          "Optimal. Adding a new shard moves only 1/(N+1) keys on average, and virtual nodes prevent uneven key clustering and hotspots.",
+      },
+      {
+        id: "opt3",
+        label: "Shard by timestamp: one shard per day of the week",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. Timestamp sharding routes 100% of current write traffic to today's shard, leaving other shards idle and failing to distribute load.",
+      },
+    ],
+  },
+  "kafka-event-streaming": {
+    scenario:
+      "The order service publishes payment events to trigger email receipts. The email vendor experiences an intermittent 45-minute outage.",
+    requirement: "Prevent checkout transactions from failing while ensuring every receipt is eventually sent.",
+    options: [
+      {
+        id: "opt1",
+        label: "Make synchronous HTTP calls from checkout to the email service with 10 retries",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. Blocks checkout thread pools waiting for email retries, triggering cascading failures that take down payment checkout.",
+      },
+      {
+        id: "opt2",
+        label: "Publish OrderPlaced events to Kafka; consume with consumer group and offset commits",
+        isOptimal: true,
+        tradeoffExplanation:
+          "Optimal. Kafka provides temporal decoupling. Checkout succeeds instantly in milliseconds, and the email consumer processes accumulated backlog safely when recovered.",
+      },
+      {
+        id: "opt3",
+        label: "Buffer emails in an in-memory application queue on the web node",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. If the web container restarts, crashes, or autoscales down during the 45-minute outage, all buffered receipts are permanently lost.",
+      },
+    ],
+  },
+  "api-gateway-envoy-routing": {
+    scenario:
+      "A mobile app calls 35 internal microservices. Each service currently implements its own TLS certificate and JWT validation logic.",
+    requirement: "Centralize security policies and reduce client connection latency.",
+    options: [
+      {
+        id: "opt1",
+        label: "Expose all 35 microservices directly to the public internet via Layer 4 NLB",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. Leaks internal topology, multiplies TLS handshake CPU on every service, and lacks header-based routing.",
+      },
+      {
+        id: "opt2",
+        label: "Deploy Envoy L7 API Gateway with edge TLS termination and path routing",
+        isOptimal: true,
+        tradeoffExplanation:
+          "Optimal. Centralizes OAuth2/JWT verification and rate limiting, terminates TLS once at edge, and routes internal traffic via fast gRPC/mTLS.",
+      },
+      {
+        id: "opt3",
+        label: "Embed billing business logic into the API Gateway routing layer",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. The 'Fat Gateway' antipattern couples routing with domain business rules, degrading gateway performance and deployment velocity.",
+      },
+    ],
+  },
+  "load-balancing-horizontal-scaling": {
+    scenario:
+      "A ticketing platform expects a 10x traffic surge during a 9:00 AM concert ticket launch.",
+    requirement: "Ensure worker tier scales smoothly without crashing cold instances.",
+    options: [
+      {
+        id: "opt1",
+        label: "Rely solely on CPU-based reactive autoscaling triggered at 9:00 AM",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. Container spin-up and readiness probes take 60-90s, causing initial traffic spike to drop requests before new instances join the pool.",
+      },
+      {
+        id: "opt2",
+        label: "Pre-scale instance pool with slow-start load balancer warmup and pre-warmed caches",
+        isOptimal: true,
+        tradeoffExplanation:
+          "Optimal. Pre-scaling provides immediate capacity, while slow-start warmup prevents cold databases and caches from getting hammered simultaneously.",
+      },
+      {
+        id: "opt3",
+        label: "Store user shopping carts in container local disk RAM",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. Statefulness breaks horizontal scaling; if requests land on a different replica, user carts disappear.",
+      },
+    ],
+  },
+  "raft-distributed-consensus": {
+    scenario:
+      "A 5-node etcd cluster loses 2 nodes due to a rack power failure in the secondary datacenter.",
+    requirement: "Determine cluster behavior and ability to commit new configuration changes.",
+    options: [
+      {
+        id: "opt1",
+        label: "Reject all writes because the cluster is no longer 100% intact",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. Raft does not require 100% node presence; requiring all nodes defeats the entire purpose of fault-tolerant consensus.",
+      },
+      {
+        id: "opt2",
+        label: "Continue committing writes since 3 of 5 nodes form a strict majority quorum",
+        isOptimal: true,
+        tradeoffExplanation:
+          "Optimal. Quorum = floor(N/2) + 1 = floor(5/2) + 1 = 3 nodes. Since 3 nodes remain active, Raft continues electing leaders and committing logs safely.",
+      },
+      {
+        id: "opt3",
+        label: "Dynamically reduce quorum to 1 node to guarantee maximum uptime",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. Reducing quorum without consensus creates immediate split-brain, causing catastrophic state divergence and data corruption.",
+      },
+    ],
+  },
+  "circuit-breakers-resilience": {
+    scenario:
+      "A fraud evaluation microservice latency degrades from 25ms to 8,000ms under heavy database lock contention.",
+    requirement: "Prevent checkout service thread pool exhaustion while still processing transactions.",
+    options: [
+      {
+        id: "opt1",
+        label: "Increase checkout HTTP connection timeout to 15 seconds to wait out the fraud DB",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. Holding threads open for 15s exhausts Tomcat/Node connection pools within seconds, turning a downstream slow-down into a full platform crash.",
+      },
+      {
+        id: "opt2",
+        label: "Trip Circuit Breaker after 50% failures over 300ms, falling back to async review",
+        isOptimal: true,
+        tradeoffExplanation:
+          "Optimal. The Circuit Breaker fails fast immediately without waiting, shedding load from the struggling fraud service and allowing checkouts to finish.",
+      },
+      {
+        id: "opt3",
+        label: "Retry failed fraud checks 5 times immediately in a while loop",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. Causes a massive Retry Storm that multiplies traffic onto the struggling database by 5x, guaranteeing it can never recover.",
+      },
+    ],
+  },
+  "distributed-tracing-opentelemetry": {
+    scenario:
+      "Users in Europe report sporadic 3.2-second checkout delays (p99.9), while average latency is 65ms across 22 microservices.",
+    requirement: "Pinpoint the exact microservice and query responsible for the tail latency spike.",
+    options: [
+      {
+        id: "opt1",
+        label: "Add high-verbosity console print statements across all 22 microservices",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. Produces terabytes of disjointed log lines without correlation IDs, making causal timeline reconstruction across services impossible.",
+      },
+      {
+        id: "opt2",
+        label: "Inject W3C traceparent headers and analyze OpenTelemetry spans in Jaeger",
+        isOptimal: true,
+        tradeoffExplanation:
+          "Optimal. Distributed tracing visualizes the full synchronous/asynchronous call DAG, immediately isolating the exact child span and query causing the tail delay.",
+      },
+      {
+        id: "opt3",
+        label: "Double the CPU cores on all 22 services blindly",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. Tail latency spikes are typically caused by lock contention, missing database indexes, or slow remote DNS, not CPU deficits.",
+      },
+    ],
+  },
+  "zero-trust-mtls-security": {
+    scenario:
+      "An attacker compromises a public-facing frontend web container through an unpatched dependency vulnerability.",
+    requirement: "Prevent the attacker from accessing the internal payments and database clusters.",
+    options: [
+      {
+        id: "opt1",
+        label: "Rely on the AWS VPC subnet security group to block internal access",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. The compromised container is already inside the VPC perimeter. With plain HTTP, the attacker can sniff credentials and make unauthorized calls.",
+      },
+      {
+        id: "opt2",
+        label: "Enforce Mutual TLS (mTLS) with SPIFFE cryptographic IDs and strict RBAC",
+        isOptimal: true,
+        tradeoffExplanation:
+          "Optimal. Zero Trust requires every request to prove cryptographic identity. The frontend SPIFFE ID has no IAM permission to call internal payment endpoints.",
+      },
+      {
+        id: "opt3",
+        label: "Store a shared secret password in an environment variable shared by all pods",
+        isOptimal: false,
+        tradeoffExplanation:
+          "Suboptimal. The attacker can inspect environment variables in the compromised container and obtain the shared key immediately.",
+      },
+    ],
+  },
+};
+
 // Formats inline text with bold, inline code, and math symbols
 function renderInline(text: string): React.ReactNode {
-  // Clean math markers: replace $$...$$ or $...$ with clean math formatting
   const parts: React.ReactNode[] = [];
   const regex = /(\*\*[^*]+\*\*|`[^`]+`|\$[^$]+\$)/g;
   let lastIdx = 0;
@@ -191,7 +644,12 @@ function renderInline(text: string): React.ReactNode {
         </code>
       );
     } else if (token.startsWith("$") && token.endsWith("$")) {
-      const formula = token.slice(1, -1).replace(/\\times/g, "×").replace(/\\approx/g, "≈").replace(/\\lambda/g, "λ").replace(/\\text\{([^}]+)\}/g, "$1");
+      const formula = token
+        .slice(1, -1)
+        .replace(/\\times/g, "×")
+        .replace(/\\approx/g, "≈")
+        .replace(/\\lambda/g, "λ")
+        .replace(/\\text\{([^}]+)\}/g, "$1");
       parts.push(
         <span
           key={match.index}
@@ -212,7 +670,7 @@ function renderInline(text: string): React.ReactNode {
 // Renders markdown tables cleanly
 function MarkdownTable({ lines }: { lines: string[] }) {
   const headerLine = lines[0];
-  const dataLines = lines.slice(2); // skip header separator
+  const dataLines = lines.slice(2);
 
   const parseCells = (row: string) =>
     row
@@ -270,7 +728,10 @@ function LessonSectionRenderer({ sectionText }: { sectionText: string }) {
     if (line.trim().startsWith("```")) {
       if (inCodeBlock) {
         elements.push(
-          <div key={`code-${i}`} className="my-4 rounded-xl border border-slate-800 bg-slate-950 p-4 font-mono text-xs text-slate-300 shadow-inner overflow-x-auto">
+          <div
+            key={`code-${i}`}
+            className="my-4 rounded-xl border border-slate-800 bg-slate-950 p-4 font-mono text-xs text-slate-300 shadow-inner overflow-x-auto"
+          >
             <pre className="leading-relaxed whitespace-pre font-mono">{codeBlockLines.join("\n")}</pre>
           </div>
         );
@@ -287,83 +748,53 @@ function LessonSectionRenderer({ sectionText }: { sectionText: string }) {
       continue;
     }
 
-    // Handle Markdown tables
+    // Handle markdown tables
     if (line.trim().startsWith("|") && line.trim().endsWith("|")) {
-      if (!inTable) {
-        inTable = true;
-        tableLines = [line];
-      } else {
-        tableLines.push(line);
-      }
+      inTable = true;
+      tableLines.push(line);
       continue;
     } else if (inTable) {
-      elements.push(<MarkdownTable key={`tbl-${i}`} lines={tableLines} />);
-      inTable = false;
+      elements.push(<MarkdownTable key={`table-${i}`} lines={tableLines} />);
       tableLines = [];
-    }
-
-    // Math block lines ($$...$$)
-    if (line.trim().startsWith("$$") && line.trim().endsWith("$$")) {
-      const rawFormula = line.trim().slice(2, -2).trim();
-      const formula = rawFormula
-        .replace(/\\times/g, " × ")
-        .replace(/\\approx/g, " ≈ ")
-        .replace(/\\lambda/g, "λ")
-        .replace(/\\text\{([^}]+)\}/g, " $1 ");
-      elements.push(
-        <div
-          key={`math-${i}`}
-          className="my-3 py-3 px-4 rounded-lg bg-amber-500/10 border border-amber-500/30 text-center font-mono text-amber-300 text-sm font-bold tracking-wide"
-        >
-          {formula}
-        </div>
-      );
-      continue;
+      inTable = false;
     }
 
     // Headers
     if (line.startsWith("# ")) {
       elements.push(
-        <h1 key={`h1-${i}`} className="text-xl sm:text-2xl font-extrabold text-white tracking-tight mt-2 mb-4">
+        <h1 key={i} className="text-xl sm:text-2xl font-extrabold text-white tracking-tight mt-6 mb-3">
           {renderInline(line.slice(2))}
         </h1>
       );
     } else if (line.startsWith("## ")) {
       elements.push(
-        <h2
-          key={`h2-${i}`}
-          className="text-base sm:text-lg font-bold text-sky-400 tracking-tight mt-6 mb-3 border-b border-slate-800 pb-2 flex items-center gap-2"
-        >
-          <Sparkles className="h-4 w-4 text-sky-400 shrink-0" />
+        <h2 key={i} className="text-base sm:text-lg font-bold text-sky-400 tracking-tight mt-5 mb-2.5 flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-sky-400" />
           <span>{renderInline(line.slice(3))}</span>
         </h2>
       );
     } else if (line.startsWith("### ")) {
       elements.push(
-        <h3 key={`h3-${i}`} className="text-sm font-bold text-slate-100 tracking-tight mt-4 mb-2">
+        <h3 key={i} className="text-sm font-bold text-white tracking-tight mt-4 mb-2">
           {renderInline(line.slice(4))}
         </h3>
       );
-    } else if (line.trim().startsWith("- ") || line.trim().startsWith("* ")) {
+    } else if (line.startsWith("- ")) {
       elements.push(
-        <div key={`li-${i}`} className="flex items-start gap-2.5 my-1 text-xs text-slate-300 leading-relaxed pl-2">
-          <span className="text-sky-400 font-bold shrink-0 mt-0.5">•</span>
-          <span>{renderInline(line.trim().slice(2))}</span>
-        </div>
+        <li key={i} className="ml-5 list-disc text-xs text-slate-300 leading-relaxed my-1">
+          {renderInline(line.slice(2))}
+        </li>
       );
-    } else if (/^\d+\.\s/.test(line.trim())) {
-      const match = line.trim().match(/^(\d+)\.\s(.*)$/);
-      if (match) {
-        elements.push(
-          <div key={`num-${i}`} className="flex items-start gap-2.5 my-1.5 text-xs text-slate-300 leading-relaxed pl-2">
-            <span className="text-sky-400 font-mono font-bold shrink-0 mt-0.5">{match[1]}.</span>
-            <span>{renderInline(match[2])}</span>
-          </div>
-        );
-      }
+    } else if (/^\d+\.\s/.test(line)) {
+      const content = line.replace(/^\d+\.\s/, "");
+      elements.push(
+        <li key={i} className="ml-5 list-decimal text-xs text-slate-300 leading-relaxed my-1">
+          {renderInline(content)}
+        </li>
+      );
     } else if (line.trim().length > 0) {
       elements.push(
-        <p key={`p-${i}`} className="text-xs text-slate-300 leading-relaxed my-2">
+        <p key={i} className="text-xs text-slate-300 leading-relaxed my-2.5">
           {renderInline(line)}
         </p>
       );
@@ -371,13 +802,13 @@ function LessonSectionRenderer({ sectionText }: { sectionText: string }) {
   }
 
   if (inTable && tableLines.length > 0) {
-    elements.push(<MarkdownTable key="tbl-end" lines={tableLines} />);
+    elements.push(<MarkdownTable key="table-end" lines={tableLines} />);
   }
 
-  return <div className="space-y-1">{elements}</div>;
+  return <div>{elements}</div>;
 }
 
-export default function LessonReaderPage() {
+export default function LessonDetailPage() {
   const params = useParams();
   const slug = params?.slug as string;
 
@@ -387,30 +818,18 @@ export default function LessonReaderPage() {
   const [completed, setCompleted] = useState(false);
   const [completionToast, setCompletionToast] = useState<string | null>(null);
 
-  // Mini Exercise interactive state
+  // Mini exercise state
   const [exerciseInput, setExerciseInput] = useState("");
   const [exerciseFeedback, setExerciseFeedback] = useState<{ isCorrect: boolean; message: string } | null>(null);
   const [showHint, setShowHint] = useState(false);
 
+  // Decision matrix state
+  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
+  const [decisionFeedback, setDecisionFeedback] = useState<DecisionOption | null>(null);
+
   const { accessToken, isAuthenticated } = useAuthStore();
 
-  const currentExercise: MiniExercise = LESSON_EXERCISES[slug] || {
-    question:
-      "A service processes 5,000 QPS with an average response time of 40ms. How many concurrent connections must be supported in-flight?",
-    placeholder: "e.g. 200",
-    validate: (val: string) => {
-      const v = val.toLowerCase().replace(/[^0-9.]/g, "");
-      if (v === "200") {
-        return { isCorrect: true, message: "Correct! 5,000 QPS × 0.040s = 200 concurrent active connections." };
-      }
-      return { isCorrect: false, message: "Try again! Throughput (5,000) × Latency (0.040) = ?" };
-    },
-    hint: "Multiply throughput (in QPS) by response time (in seconds).",
-  };
-
   useEffect(() => {
-    if (!slug) return;
-
     const fetchLesson = async () => {
       try {
         const headers: Record<string, string> = {};
@@ -423,29 +842,26 @@ export default function LessonReaderPage() {
           setLesson(data);
           setCompleted(data.is_completed || false);
         }
-      } catch {
-        // Fallback content if API is temporarily unavailable
-        setLesson({
-          id: "demo-lesson-id",
-          slug: slug,
-          title: slug.replace(/-/g, " ").toUpperCase(),
-          topic_id: "demo-topic-id",
-          topic_slug: "fundamentals",
-          topic_title: "System Design Fundamentals",
-          content_markdown: `# ${slug.replace(/-/g, " ").toUpperCase()}\n\n## 1. Explanation\nDetailed lesson material covering architectural trade-offs and first-principles calculations.`,
-          estimated_minutes: 20,
-          order_index: 1,
-          is_completed: false,
-          next_lesson_slug: null,
-          prev_lesson_slug: null,
-        });
+      } catch (err) {
+        console.error("Failed to load lesson:", err);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchLesson();
+    if (slug) {
+      fetchLesson();
+    }
   }, [slug, accessToken]);
+
+  const currentExercise = LESSON_EXERCISES[slug] || {
+    question: `Evaluate the trade-offs of ${lesson?.title || "this pattern"} in production. Identify the primary capacity constraint.`,
+    placeholder: "e.g. Latency vs Storage",
+    validate: () => ({ isCorrect: true, message: "Insight noted! Review the trade-off matrix to compare alternatives." }),
+    hint: "Think about whether read throughput, disk storage, or consistency is the primary bottleneck.",
+  };
+
+  const currentDecisionMatrix = LESSON_DECISION_MATRICES[slug] || LESSON_DECISION_MATRICES["latency-vs-throughput"];
 
   const handleMarkComplete = async () => {
     if (!lesson) return;
@@ -469,7 +885,6 @@ export default function LessonReaderPage() {
           );
         }
       } else {
-        // Local completion for public/demo users
         setCompleted(true);
         setCompletionToast("Lesson marked as completed! (Sign in to save permanent progress across devices)");
       }
@@ -487,6 +902,11 @@ export default function LessonReaderPage() {
     if (!exerciseInput.trim()) return;
     const result = currentExercise.validate(exerciseInput);
     setExerciseFeedback(result);
+  };
+
+  const handleSelectDecisionOption = (option: DecisionOption) => {
+    setSelectedOptionId(option.id);
+    setDecisionFeedback(option);
   };
 
   if (isLoading) {
@@ -509,7 +929,7 @@ export default function LessonReaderPage() {
         <div className="flex-1 max-w-4xl mx-auto px-4 py-20 text-center">
           <h2 className="text-xl font-bold text-white mb-2">Lesson Not Found</h2>
           <Link href="/learn" className="text-xs font-mono text-sky-400 hover:underline">
-            ← Return to Curriculum Catalog
+            ← Return to Curriculum Dashboard
           </Link>
         </div>
         <Footer />
@@ -546,8 +966,8 @@ export default function LessonReaderPage() {
           </div>
         )}
 
-        {/* Lesson Header */}
-        <div className="rounded-xl border border-slate-800 bg-surface-900/80 p-6 mb-8">
+        {/* Lesson Header with Contextual Action CTAs */}
+        <div className="rounded-xl border border-slate-800 bg-surface-900/80 p-6 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 uppercase tracking-wider mb-2 inline-block">
@@ -558,22 +978,56 @@ export default function LessonReaderPage() {
               </h1>
             </div>
 
-            <button
-              onClick={handleMarkComplete}
-              disabled={isCompleting || completed}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-mono font-bold transition-all shrink-0 ${
-                completed
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 cursor-default"
-                  : "bg-sky-500 hover:bg-sky-400 text-slate-950 shadow-md"
-              }`}
-            >
-              {isCompleting ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <CheckCircle2 className="h-3.5 w-3.5" />
-              )}
-              <span>{completed ? "Completed" : "Mark as Completed (+50 XP)"}</span>
-            </button>
+            {/* Action CTAs */}
+            <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+              <Link
+                href={`/design?topic=${lesson.topic_slug}&title=${encodeURIComponent(lesson.title)}`}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sky-300 text-xs font-mono font-bold transition-all shadow-sm"
+              >
+                <Layers className="h-3.5 w-3.5 text-sky-400" />
+                <span>Apply in Canvas →</span>
+              </Link>
+
+              <button
+                onClick={handleMarkComplete}
+                disabled={isCompleting || completed}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-mono font-bold transition-all ${
+                  completed
+                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 cursor-default"
+                    : "bg-sky-500 hover:bg-sky-400 text-slate-950 shadow-md"
+                }`}
+              >
+                {isCompleting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                )}
+                <span>{completed ? "Completed" : "Mark Complete (+50 XP)"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ==================================================================== */}
+        {/* CONCEPTUAL PROGRESSION HEADER */}
+        {/* ==================================================================== */}
+        <div className="mb-8 p-3.5 rounded-xl border border-slate-800/80 bg-slate-950/60 overflow-x-auto shadow-inner">
+          <div className="flex items-center gap-2 text-[11px] font-mono whitespace-nowrap min-w-max">
+            <span className="text-slate-500 uppercase font-bold text-[10px] mr-1 flex items-center gap-1">
+              <Compass className="h-3.5 w-3.5 text-sky-400" />
+              <span>Progression Ladder:</span>
+            </span>
+            {CONCEPTUAL_PROGRESSION.map((step, idx) => (
+              <React.Fragment key={step.id}>
+                <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-sky-400 font-medium flex items-center gap-1">
+                  <span className="text-[9px] text-slate-500">{idx + 1}.</span>
+                  <span>{step.label}</span>
+                </span>
+                {idx < CONCEPTUAL_PROGRESSION.length - 1 && (
+                  <ChevronRight className="h-3 w-3 text-slate-600" />
+                )}
+              </React.Fragment>
+            ))}
           </div>
         </div>
 
@@ -589,12 +1043,101 @@ export default function LessonReaderPage() {
           ))}
         </article>
 
+        {/* ==================================================================== */}
+        {/* ARCHITECTURE DECISION MATRIX INTERACTIVE WIDGET */}
+        {/* ==================================================================== */}
+        {currentDecisionMatrix && (
+          <div className="mt-8 rounded-xl border border-purple-500/30 bg-purple-950/20 p-6 space-y-4">
+            <div className="flex items-center gap-2 text-purple-400 text-xs font-mono font-bold uppercase">
+              <Split className="h-4 w-4" />
+              <span>Architecture Decision Matrix: Real-World Trade-Off Challenge</span>
+            </div>
+
+            <div className="p-3.5 rounded-lg bg-slate-950/70 border border-slate-800 text-xs space-y-1.5">
+              <p className="text-slate-300 leading-relaxed font-sans">
+                <span className="font-bold text-white">Scenario: </span>
+                {currentDecisionMatrix.scenario}
+              </p>
+              <p className="text-sky-300 font-mono text-[11px]">
+                <span className="text-slate-400">Target Requirement: </span>
+                {currentDecisionMatrix.requirement}
+              </p>
+            </div>
+
+            <div className="space-y-2.5">
+              <span className="text-[11px] font-mono text-slate-400 uppercase block">
+                Select the most defensible architectural strategy:
+              </span>
+              {currentDecisionMatrix.options.map((opt) => {
+                const isSelected = selectedOptionId === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    onClick={() => handleSelectDecisionOption(opt)}
+                    className={`w-full text-left p-3 rounded-lg border text-xs font-mono transition-all flex items-start gap-2.5 ${
+                      isSelected
+                        ? opt.isOptimal
+                          ? "bg-emerald-950/40 border-emerald-500/50 text-emerald-200"
+                          : "bg-amber-950/40 border-amber-500/50 text-amber-200"
+                        : "bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white"
+                    }`}
+                  >
+                    <div
+                      className={`h-4 w-4 rounded-full border shrink-0 mt-0.5 flex items-center justify-center ${
+                        isSelected
+                          ? opt.isOptimal
+                            ? "border-emerald-400 bg-emerald-500/20"
+                            : "border-amber-400 bg-amber-500/20"
+                          : "border-slate-600"
+                      }`}
+                    >
+                      {isSelected && (
+                        <div
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            opt.isOptimal ? "bg-emerald-400" : "bg-amber-400"
+                          }`}
+                        />
+                      )}
+                    </div>
+                    <span>{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {decisionFeedback && (
+              <div
+                className={`p-3.5 rounded-lg border text-xs font-mono space-y-1 animate-in fade-in ${
+                  decisionFeedback.isOptimal
+                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                    : "bg-amber-500/10 border-amber-500/30 text-amber-300"
+                }`}
+              >
+                <div className="flex items-center gap-1.5 font-bold">
+                  {decisionFeedback.isOptimal ? (
+                    <>
+                      <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                      <span>Optimal Senior Staff Decision</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertTriangle className="h-4 w-4 text-amber-400" />
+                      <span>Suboptimal Architectural Trade-off</span>
+                    </>
+                  )}
+                </div>
+                <p className="text-[11px] leading-relaxed">{decisionFeedback.tradeoffExplanation}</p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Interactive Mini Exercise Widget */}
         <div className="mt-8 rounded-xl border border-sky-500/30 bg-sky-950/20 p-6">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2 text-sky-400 text-xs font-mono font-bold uppercase">
               <Calculator className="h-4 w-4" />
-              <span>Interactive Mini-Exercise: First-Principles Verification</span>
+              <span>Interactive Mini-Exercise: First-Principles Calculation</span>
             </div>
             <button
               type="button"
@@ -661,7 +1204,13 @@ export default function LessonReaderPage() {
               <span>Previous Lesson</span>
             </Link>
           ) : (
-            <div />
+            <Link
+              href="/learn"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-900 text-xs font-mono text-slate-300 hover:text-white hover:border-slate-700 transition-colors"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>Curriculum Dashboard</span>
+            </Link>
           )}
 
           {lesson.next_lesson_slug ? (

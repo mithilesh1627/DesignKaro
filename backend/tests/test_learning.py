@@ -102,3 +102,41 @@ async def test_complete_lesson_unauthorized(client):
         json={"notes": "No token"},
     )
     assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_get_learning_overview_unauthenticated(client):
+    response = await client.get("/api/v1/learning/overview")
+    assert response.status_code == 200
+    data = response.json()
+    assert "overall_mastery" in data
+    assert "current_level" in data
+    assert data["current_level"] == "Systems Apprentice"
+    assert len(data["domains"]) == 11
+    assert len(data["learning_paths"]) == 11
+    assert data["recommendation"] is not None
+    assert data["recommendation"]["topic_slug"] == "fundamentals"
+    assert "reason" in data["recommendation"]
+    assert len(data["topics"]) >= 11
+
+
+@pytest.mark.asyncio
+async def test_get_learning_overview_authenticated(client):
+    # 1. Login demo user
+    login_res = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "demo@designkaro.io", "password": "Password123!"},
+    )
+    token = login_res.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = await client.get("/api/v1/learning/overview", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["overall_mastery"] >= 0
+    assert len(data["domains"]) == 11
+    assert len(data["learning_paths"]) == 11
+    assert "current_learning" in data
+    assert data["recommendation"] is not None
+    assert len(data["topics"]) >= 11
+
