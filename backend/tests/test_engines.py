@@ -86,6 +86,13 @@ def test_traffic_simulation_and_chaos(sample_graph):
     assert sim_res.dropped_requests > 0
     assert "blast radius" in sim_res.blast_radius_summary.lower()
     assert sim_res.incident_rca is not None
+    # Phase 5 assertions
+    assert sim_res.disclaimer == "Estimated Simulation"
+    assert sim_res.throughput_qps >= 0
+    assert sim_res.p50_latency_ms > 0
+    assert sim_res.p95_latency_ms >= sim_res.p50_latency_ms
+    assert sim_res.p99_latency_ms >= sim_res.p95_latency_ms
+    assert sim_res.bottleneck_explanation is not None
 
 
 @pytest.mark.asyncio
@@ -106,7 +113,16 @@ async def test_review_api_endpoint(client, sample_graph):
 async def test_simulation_api_endpoint(client, sample_graph):
     payload = {
         "graph_data": sample_graph.model_dump(),
-        "traffic": {"base_qps": 1000, "peak_qps": 5000, "duration_sec": 6, "step_sec": 2},
+        "traffic": {
+            "base_qps": 1000,
+            "peak_qps": 5000,
+            "duration_sec": 6,
+            "step_sec": 2,
+            "read_ratio": 0.8,
+            "payload_kb": 12.0,
+            "cache_hit_ratio": 0.9,
+            "network_latency_ms": 15.0,
+        },
         "failure": {"failure_type": "NONE"},
     }
     response = await client.post("/api/v1/simulations/run", json=payload)
@@ -114,3 +130,8 @@ async def test_simulation_api_endpoint(client, sample_graph):
     data = response.json()
     assert "ticks" in data
     assert len(data["ticks"]) == 3
+    assert data["disclaimer"] == "Estimated Simulation"
+    assert "throughput_qps" in data
+    assert "p95_latency_ms" in data
+    assert "bottleneck_explanation" in data
+

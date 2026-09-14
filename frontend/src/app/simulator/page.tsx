@@ -64,6 +64,12 @@ import {
   RefreshCw,
   Send,
   MessageSquare,
+  Flame,
+  Pause,
+  Gauge,
+  TrendingUp,
+  BarChart3,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   ArchitectureComponentCategory,
@@ -81,6 +87,10 @@ import {
   ValidationResponse,
   AIArchitectSuggestion,
   AIArchitectCritiqueResponse,
+  SimulationTrafficProfile,
+  SimulationResult,
+  SimulationTick,
+  SimulationNodeMetric,
 } from "@/types/simulator";
 import {
   createArchitectureEvent,
@@ -90,6 +100,13 @@ import {
   validateGraphOnBackend,
   fetchAIArchitectCritique,
 } from "@/lib/architectureGraph";
+import {
+  DEFAULT_TRAFFIC_PROFILE,
+  TRAFFIC_PRESETS,
+  TrafficPreset,
+  runClientSimulation,
+  runBackendSimulation,
+} from "@/lib/simulationEngine";
 
 // ============================================================================
 // COMPONENT LIBRARY DEFINITIONS
@@ -400,6 +417,13 @@ interface CustomFlowData extends Record<string, unknown> {
   isSelected?: boolean;
   violationSeverity?: RuleSeverity | null;
   violations?: RuleViolation[];
+  // Phase 5 Simulation Mode
+  isSimulationMode?: boolean;
+  isBottleneck?: boolean;
+  utilizationPercent?: number;
+  throughputQps?: number;
+  nodeLatencyMs?: number;
+  nodeStatus?: string;
 }
 
 const SimulatorCustomNode = ({ data }: { data: CustomFlowData }) => {
@@ -410,10 +434,18 @@ const SimulatorCustomNode = ({ data }: { data: CustomFlowData }) => {
   const Icon = comp.icon;
   const replicas = node.config?.replicas || 1;
   const severity = data?.violationSeverity;
+  const isSimulation = data?.isSimulationMode;
+  const isBottleneck = data?.isBottleneck;
+  const utilPercent = data?.utilizationPercent ?? 0;
+  const throughput = data?.throughputQps ?? 0;
 
   let borderStyle = `${comp.borderClass} hover:border-cyan-500/60`;
   if (data.isSelected) {
     borderStyle = "border-cyan-400 ring-2 ring-cyan-500/40 shadow-[0_0_20px_rgba(6,182,212,0.25)]";
+  } else if (isBottleneck) {
+    borderStyle = "border-red-500 ring-4 ring-red-500/80 shadow-[0_0_32px_rgba(239,68,68,0.75)] animate-pulse";
+  } else if (isSimulation && utilPercent >= 85) {
+    borderStyle = "border-amber-400 ring-2 ring-amber-400/60 shadow-[0_0_20px_rgba(251,191,36,0.45)]";
   } else if (severity === "critical") {
     borderStyle = "border-red-500 ring-2 ring-red-500/70 shadow-[0_0_22px_rgba(239,68,68,0.55)] animate-pulse";
   } else if (severity === "warning") {
@@ -422,10 +454,18 @@ const SimulatorCustomNode = ({ data }: { data: CustomFlowData }) => {
 
   return (
     <div
-      className={`relative px-4 py-3 rounded-xl border bg-[#091122]/95 backdrop-blur-xl shadow-2xl min-w-[185px] transition-all duration-200 cursor-pointer ${borderStyle}`}
+      className={`relative px-4 py-3 rounded-xl border bg-[#091122]/95 backdrop-blur-xl shadow-2xl min-w-[195px] transition-all duration-200 cursor-pointer ${borderStyle}`}
     >
-      {/* Violation Severity Badge */}
-      {severity === "critical" && (
+      {/* Primary Bottleneck Badge */}
+      {isBottleneck && (
+        <div className="absolute -top-3.5 left-2 px-2 py-0.5 rounded-full bg-red-600 text-white text-[9px] font-mono font-bold flex items-center gap-1 shadow-lg shadow-red-950/80 z-30 animate-bounce">
+          <Flame className="w-3 h-3 text-amber-200" />
+          <span>PRIMARY BOTTLENECK ({utilPercent}%)</span>
+        </div>
+      )}
+
+      {/* Violation Severity Badge (when not bottleneck) */}
+      {!isBottleneck && severity === "critical" && (
         <div
           className="absolute -top-3 -right-2 px-2 py-0.5 rounded-full bg-red-950/95 border border-red-500 text-[9px] font-bold text-red-300 flex items-center gap-1 shadow-lg shadow-red-950/60 z-20"
           title={data.violations?.map((v) => `[${v.rule_name}] ${v.message}`).join("\n")}
@@ -434,7 +474,7 @@ const SimulatorCustomNode = ({ data }: { data: CustomFlowData }) => {
           <span>Critical ({data.violations?.length || 1})</span>
         </div>
       )}
-      {severity === "warning" && (
+      {!isBottleneck && severity === "warning" && (
         <div
           className="absolute -top-3 -right-2 px-2 py-0.5 rounded-full bg-amber-950/95 border border-amber-500 text-[9px] font-bold text-amber-300 flex items-center gap-1 shadow-lg shadow-amber-950/60 z-20"
           title={data.violations?.map((v) => `[${v.rule_name}] ${v.message}`).join("\n")}
@@ -475,6 +515,41 @@ const SimulatorCustomNode = ({ data }: { data: CustomFlowData }) => {
           </div>
         </div>
       </div>
+
+      {/* Simulation Load Meter */}
+      {isSimulation && (
+        <div className="mt-2.5 pt-2 border-t border-white/[0.06] space-y-1">
+          <div className="flex items-center justify-between text-[9px] font-mono text-slate-400">
+            <span className="flex items-center gap-1">
+              <Activity className="w-2.5 h-2.5 text-cyan-400" />
+              <span>Capacity Load</span>
+            </span>
+            <span
+              className={
+                utilPercent >= 90
+                  ? "text-red-400 font-bold"
+                  : utilPercent >= 70
+                  ? "text-amber-400 font-semibold"
+                  : "text-emerald-400"
+              }
+            >
+              {utilPercent}% ({throughput.toLocaleString()} RPS)
+            </span>
+          </div>
+          <div className="w-full h-1.5 rounded-full bg-slate-950 border border-white/[0.04] overflow-hidden">
+            <div
+              className={`h-full transition-all duration-300 ${
+                utilPercent >= 90
+                  ? "bg-gradient-to-r from-amber-500 to-red-500"
+                  : utilPercent >= 70
+                  ? "bg-amber-400"
+                  : "bg-emerald-400"
+              }`}
+              style={{ width: `${Math.min(100, Math.max(3, utilPercent))}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Egress Source Handle */}
       <Handle
@@ -602,6 +677,56 @@ function SimulatorContent() {
   const [userInterviewAnswer, setUserInterviewAnswer] = useState<string>("");
   const [interviewSubmitted, setInterviewSubmitted] = useState<boolean>(false);
 
+  // --------------------------------------------------------------------------
+  // PHASE 5: SIMULATION & TRAFFIC ENGINE STATE
+  // --------------------------------------------------------------------------
+  const [trafficProfile, setTrafficProfile] = useState<SimulationTrafficProfile>(DEFAULT_TRAFFIC_PROFILE);
+  const [activePresetId, setActivePresetId] = useState<string>("surge");
+  const [isSimulationRunning, setIsSimulationRunning] = useState<boolean>(false);
+  const [simTickIndex, setSimTickIndex] = useState<number>(0);
+  const [isBackendSimulating, setIsBackendSimulating] = useState<boolean>(false);
+  const [backendSimResult, setBackendSimResult] = useState<SimulationResult | null>(null);
+
+  // Instant deterministic client-side simulation (0ms latency, fluid 60fps slider reaction)
+  const activeSimulationResult: SimulationResult = useMemo(() => {
+    if (backendSimResult) return backendSimResult;
+    return runClientSimulation(graphState, trafficProfile);
+  }, [backendSimResult, graphState, trafficProfile]);
+
+  // Discrete time playback ticker
+  useEffect(() => {
+    if (!isSimulationRunning) return;
+    const ticks = activeSimulationResult.ticks;
+    if (!ticks || ticks.length === 0) return;
+
+    const timer = setInterval(() => {
+      setSimTickIndex((prev) => (prev + 1) % ticks.length);
+    }, 800);
+    return () => clearInterval(timer);
+  }, [isSimulationRunning, activeSimulationResult.ticks]);
+
+  // Current active discrete tick
+  const currentTick: SimulationTick | null = useMemo(() => {
+    if (!activeSimulationResult.ticks || activeSimulationResult.ticks.length === 0) return null;
+    const idx = Math.min(simTickIndex, activeSimulationResult.ticks.length - 1);
+    return activeSimulationResult.ticks[idx] || null;
+  }, [activeSimulationResult.ticks, simTickIndex]);
+
+  // Map of node ID to live simulation metric (from current tick or peak)
+  const nodeMetricsMap = useMemo(() => {
+    const map = new Map<string, SimulationNodeMetric>();
+    if (currentTick) {
+      currentTick.node_metrics.forEach((m) => map.set(m.node_id, m));
+    } else if (activeSimulationResult.ticks.length > 0) {
+      const peakTick = activeSimulationResult.ticks.reduce(
+        (max, t) => (t.qps > max.qps ? t : max),
+        activeSimulationResult.ticks[0]
+      );
+      peakTick.node_metrics.forEach((m) => map.set(m.node_id, m));
+    }
+    return map;
+  }, [currentTick, activeSimulationResult]);
+
   // Active Drag & Drop Tracking State (Ensures 100% Reliable Placement Across All Browsers)
   const [draggedType, setDraggedType] = useState<string | null>(null);
   const draggedTypeRef = useRef<string | null>(null);
@@ -670,6 +795,8 @@ function SimulatorContent() {
   const flowNodes: Node<CustomFlowData>[] = useMemo(() => {
     return graphState.nodes.map((n) => {
       const vInfo = nodeViolationMap.get(n.id);
+      const metric = nodeMetricsMap.get(n.id);
+      const isBottleneck = activeSimulationResult.bottleneck_node_id === n.id;
       return {
         id: n.id,
         type: "simulatorCustomNode",
@@ -681,32 +808,46 @@ function SimulatorContent() {
           isSelected: n.id === selectedNodeId,
           violationSeverity: vInfo?.severity || null,
           violations: vInfo?.violations || [],
+          isSimulationMode: activeTab === "simulation",
+          isBottleneck: isBottleneck,
+          utilizationPercent: metric?.utilization_percent ?? (isBottleneck ? activeSimulationResult.bottleneck_utilization : 0),
+          throughputQps: metric?.throughput_qps ?? Math.round(activeSimulationResult.throughput_qps / Math.max(1, graphState.nodes.length)),
+          nodeLatencyMs: metric?.latency_p99_ms ?? Math.round(activeSimulationResult.p95_latency_ms),
+          nodeStatus: metric?.status ?? "HEALTHY",
         },
       };
     });
-  }, [graphState.nodes, selectedNodeId, nodeViolationMap]);
+  }, [
+    graphState.nodes,
+    selectedNodeId,
+    nodeViolationMap,
+    nodeMetricsMap,
+    activeSimulationResult,
+    activeTab,
+  ]);
 
   const flowEdges: Edge[] = useMemo(() => {
     return graphState.edges.map((e) => {
       const visualProps = getEdgeVisualProps(e.connectionType);
       const isSelected = e.id === selectedEdgeId;
+      const isSim = activeTab === "simulation";
       return {
         id: e.id,
         source: e.source,
         target: e.target,
-        animated: visualProps.animated,
-        label: visualProps.label,
+        animated: isSim ? true : visualProps.animated,
+        label: isSim && currentTick ? `${Math.round(currentTick.qps).toLocaleString()} RPS` : visualProps.label,
         labelStyle: visualProps.labelStyle,
         labelBgStyle: visualProps.labelBgStyle,
         markerEnd: { type: MarkerType.ArrowClosed, color: visualProps.stroke },
         style: {
-          stroke: isSelected ? "#38bdf8" : visualProps.stroke,
-          strokeWidth: isSelected ? 3 : visualProps.strokeWidth,
-          strokeDasharray: visualProps.strokeDasharray,
+          stroke: isSelected ? "#38bdf8" : isSim ? "#06b6d4" : visualProps.stroke,
+          strokeWidth: isSelected ? 3 : isSim ? 2.5 : visualProps.strokeWidth,
+          strokeDasharray: isSim ? "6, 6" : visualProps.strokeDasharray,
         },
       };
     });
-  }, [graphState.edges, selectedEdgeId]);
+  }, [graphState.edges, selectedEdgeId, activeTab, currentTick]);
 
   const nodeTypes = SIMULATOR_NODE_TYPES;
 
@@ -891,6 +1032,25 @@ function SimulatorContent() {
       }
     },
     [commitGraphChange, reactFlowInstance, showToast]
+  );
+
+  const handleUpdateNodeConfig = useCallback(
+    (nodeId: string, partial: Partial<ArchitectureNodeConfig>) => {
+      commitGraphChange(
+        (prev) => ({
+          ...prev,
+          nodes: prev.nodes.map((n) =>
+            n.id === nodeId
+              ? { ...n, config: { ...n.config, ...partial } }
+              : n
+          ),
+        }),
+        "UPDATE_CONFIGURATION",
+        `Updated configuration for node '${nodeId}'`,
+        { nodeId, payload: partial }
+      );
+    },
+    [commitGraphChange]
   );
 
   // Delete Component
@@ -1326,6 +1486,75 @@ function SimulatorContent() {
     [graphState.nodes, handleAddComponent, commitGraphChange]
   );
 
+  // --------------------------------------------------------------------------
+  // PHASE 5: SIMULATION ACTIONS & REMEDIATION
+  // --------------------------------------------------------------------------
+  const handleSelectPreset = useCallback(
+    (preset: TrafficPreset) => {
+      setActivePresetId(preset.id);
+      setBackendSimResult(null);
+      setTrafficProfile((prev) => ({
+        ...prev,
+        ...preset.profile,
+      }));
+      setSimTickIndex(0);
+      showToast(`Applied preset: ${preset.name} (${preset.badge})`);
+    },
+    [showToast]
+  );
+
+  const handleApplySimulationFix = useCallback(
+    (action: string) => {
+      if (!action) return;
+      setBackendSimResult(null);
+
+      if (action.startsWith("scale:")) {
+        const parts = action.split(":");
+        const targetNodeId = parts[1];
+        const replicaCount = parseInt(parts[2], 10) || 3;
+        const targetNode = graphState.nodes.find((n) => n.id === targetNodeId);
+
+        commitGraphChange(
+          (prev) => ({
+            ...prev,
+            nodes: prev.nodes.map((n) =>
+              n.id === targetNodeId
+                ? { ...n, config: { ...n.config, replicas: replicaCount } }
+                : n
+            ),
+          }),
+          "SCALE_COMPONENT",
+          `Scaled ${targetNode?.name || targetNodeId} to ${replicaCount} replicas to relieve primary bottleneck`,
+          { nodeId: targetNodeId, payload: { replicaCount } }
+        );
+        showToast(`⚡ Scaled ${targetNode?.name || targetNodeId} to ${replicaCount} replicas!`);
+      } else if (action.startsWith("add_component:")) {
+        const compType = action.split(":")[1] || "redis";
+        const bNode = graphState.nodes.find((n) => n.id === activeSimulationResult.bottleneck_node_id);
+        const posX = bNode ? bNode.position.x - 130 : 500;
+        const posY = bNode ? bNode.position.y - 90 : 150;
+
+        handleAddComponent(compType, { x: Math.max(50, posX), y: Math.max(50, posY) });
+        showToast(`⚡ Added ${compType.toUpperCase()} to canvas to relieve primary bottleneck!`);
+      }
+    },
+    [graphState.nodes, activeSimulationResult.bottleneck_node_id, commitGraphChange, handleAddComponent, showToast]
+  );
+
+  const handleRunBackendTrace = useCallback(async () => {
+    setIsBackendSimulating(true);
+    try {
+      const res = await runBackendSimulation(graphState, trafficProfile);
+      setBackendSimResult(res);
+      setSimTickIndex(0);
+      showToast("Discrete event simulation trace completed via Backend Engine!");
+    } catch (err) {
+      showToast("Backend simulation failed, running client simulation.");
+    } finally {
+      setIsBackendSimulating(false);
+    }
+  }, [graphState, trafficProfile, showToast]);
+
   // Node Drag on Canvas
   const onNodesChange = useCallback((changes: any) => {
     const hasMeaningfulChange = changes.some(
@@ -1484,7 +1713,7 @@ function SimulatorContent() {
             onClick={() => setActiveTab("requirements")}
             className={`px-3 py-1 rounded-lg transition ${
               activeTab === "requirements"
-                ? "bg-white/[0.1] text-cyan-300 font-semibold"
+                ? "bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 font-semibold shadow-[0_0_12px_rgba(6,182,212,0.2)]"
                 : "text-slate-400 hover:text-white"
             }`}
           >
@@ -1502,23 +1731,28 @@ function SimulatorContent() {
           </button>
           <button
             onClick={() => setActiveTab("simulation")}
-            className={`px-3 py-1 rounded-lg transition ${
+            className={`px-3 py-1 rounded-lg transition flex items-center gap-1.5 ${
               activeTab === "simulation"
-                ? "bg-white/[0.1] text-cyan-300 font-semibold"
+                ? "bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 font-semibold shadow-[0_0_12px_rgba(6,182,212,0.2)]"
                 : "text-slate-400 hover:text-white"
             }`}
           >
-            Simulation
+            <Activity className="w-3 h-3 text-cyan-400" />
+            <span>Simulation</span>
+            {activeSimulationResult.bottleneck_node_id && (
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
+            )}
           </button>
           <button
             onClick={() => setActiveTab("evaluation")}
-            className={`px-3 py-1 rounded-lg transition ${
+            className={`px-3 py-1 rounded-lg transition flex items-center gap-1.5 ${
               activeTab === "evaluation"
-                ? "bg-white/[0.1] text-cyan-300 font-semibold"
+                ? "bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 font-semibold shadow-[0_0_12px_rgba(6,182,212,0.2)]"
                 : "text-slate-400 hover:text-white"
             }`}
           >
-            Evaluation
+            <ShieldCheck className="w-3 h-3 text-cyan-400" />
+            <span>Evaluation</span>
           </button>
         </div>
 
@@ -1896,9 +2130,939 @@ function SimulatorContent() {
         {/* ================================================================== */}
         {/* RIGHT PANE: CONFIGURATION DRAWER (NODE OR EDGE)                    */}
         {/* ================================================================== */}
-        <aside className="w-72 sm:w-80 border-l border-white/[0.08] bg-[#070c18] flex flex-col shrink-0 z-20">
-          {/* Node Selected */}
-          {activeNode ? (
+        <aside
+          className={`${
+            activeTab === "simulation" ? "w-80 sm:w-96" : "w-72 sm:w-80"
+          } border-l border-white/[0.08] bg-[#070c18] flex flex-col shrink-0 z-20 transition-all duration-200`}
+        >
+          {activeTab === "simulation" ? (
+            /* ============================================================== */
+            /* PHASE 5: SIMULATION COCKPIT PANEL                             */
+            /* ============================================================== */
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Cockpit Header */}
+              <div className="p-4 border-b border-white/[0.06] bg-slate-900/50 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                    <Gauge className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-white font-mono uppercase tracking-wider">
+                      Simulation Cockpit
+                    </h3>
+                    <p className="text-[10px] text-slate-400 font-mono">
+                      M/M/c Queueing • Synthetic Load
+                    </p>
+                  </div>
+                </div>
+
+                {/* PROMINENT DISCLAIMER BADGE (Required by prompt) */}
+                <div
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/35 text-[9px] font-mono font-bold text-amber-300 shadow-sm"
+                  title="Estimated mathematical approximation based on queueing theory, not real production metrics"
+                >
+                  <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
+                  <span>Estimated Simulation</span>
+                </div>
+              </div>
+
+              {/* In-place Node Tuning Bar (if node selected) */}
+              {activeNode && (
+                <div className="px-4 py-2.5 bg-cyan-950/40 border-b border-cyan-500/30 flex items-center justify-between text-xs font-mono shrink-0">
+                  <div className="min-w-0 pr-2">
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-cyan-300 truncate">
+                      <SlidersHorizontal className="w-3 h-3 text-cyan-400 shrink-0" />
+                      <span className="truncate">{activeNode.name}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate">
+                      {activeNode.config?.replicas || 1}x Replicas • {(((activeNode.config?.replicas || 1) * (activeNode.config?.qps_capacity || 5000))).toLocaleString()} Max QPS
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => {
+                        const curr = activeNode.config?.replicas || 1;
+                        if (curr > 1) {
+                          commitGraphChange(
+                            (prev) => ({
+                              ...prev,
+                              nodes: prev.nodes.map((n) =>
+                                n.id === activeNode.id
+                                  ? { ...n, config: { ...n.config, replicas: curr - 1 } }
+                                  : n
+                              ),
+                            }),
+                            "SCALE_COMPONENT",
+                            `Scaled down ${activeNode.name} to ${curr - 1} replicas`,
+                            { nodeId: activeNode.id }
+                          );
+                        }
+                      }}
+                      disabled={(activeNode.config?.replicas || 1) <= 1}
+                      className="w-6 h-6 rounded bg-slate-900 border border-white/[0.1] text-slate-300 hover:text-white disabled:opacity-40 disabled:hover:text-slate-300 flex items-center justify-center font-bold text-xs"
+                      title="Decrease Replicas"
+                    >
+                      -
+                    </button>
+                    <span className="w-7 text-center font-bold text-cyan-300 text-xs">
+                      {activeNode.config?.replicas || 1}
+                    </span>
+                    <button
+                      onClick={() => {
+                        const curr = activeNode.config?.replicas || 1;
+                        commitGraphChange(
+                          (prev) => ({
+                            ...prev,
+                            nodes: prev.nodes.map((n) =>
+                              n.id === activeNode.id
+                                ? { ...n, config: { ...n.config, replicas: curr + 1 } }
+                                : n
+                            ),
+                          }),
+                          "SCALE_COMPONENT",
+                          `Scaled up ${activeNode.name} to ${curr + 1} replicas`,
+                          { nodeId: activeNode.id }
+                        );
+                      }}
+                      className="w-6 h-6 rounded bg-slate-900 border border-white/[0.1] text-slate-300 hover:text-white flex items-center justify-center font-bold text-xs"
+                      title="Increase Replicas"
+                    >
+                      +
+                    </button>
+                    <button
+                      onClick={() => setSelectedNodeId(null)}
+                      className="ml-1 p-1 text-slate-500 hover:text-white transition"
+                      title="Deselect node"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Scrollable Cockpit Content */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-xs">
+                {/* 1. TRAFFIC PRESETS BAR */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    <span className="flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Traffic Presets</span>
+                    </span>
+                    <span className="text-[10px] text-cyan-400">5 Scenarios</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {TRAFFIC_PRESETS.map((preset) => {
+                      const isSelected = activePresetId === preset.id;
+                      return (
+                        <button
+                          key={preset.id}
+                          onClick={() => handleSelectPreset(preset)}
+                          className={`p-2 rounded-xl border text-left transition flex flex-col justify-between ${
+                            isSelected
+                              ? "border-cyan-400 bg-cyan-500/15 text-white ring-1 ring-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.2)]"
+                              : "border-white/[0.08] bg-slate-950/60 text-slate-400 hover:text-slate-200 hover:border-white/[0.15]"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="text-[11px] font-bold truncate">{preset.name}</span>
+                            <span
+                              className={`text-[9px] font-mono px-1 py-0.2 rounded font-bold ${
+                                isSelected ? "bg-cyan-950 text-cyan-300" : "bg-white/[0.06] text-slate-400"
+                              }`}
+                            >
+                              {preset.badge}
+                            </span>
+                          </div>
+                          <p className="text-[9px] text-slate-400 line-clamp-1 mt-1 font-light">
+                            {preset.description}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 2. LIVE PARAMETER SLIDERS */}
+                <div className="p-3.5 rounded-2xl border border-white/[0.08] bg-slate-950/70 space-y-3">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                    <span className="flex items-center gap-1.5">
+                      <Sliders className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Workload Controls</span>
+                    </span>
+                    <span className="text-[10px] text-cyan-400 font-normal">Realtime 60fps</span>
+                  </div>
+
+                  {/* Peak Target RPS Slider */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400">Peak Ingress RPS</span>
+                      <span className="font-bold text-cyan-300 font-mono">
+                        {trafficProfile.peak_qps.toLocaleString()} RPS
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={5000}
+                      max={250000}
+                      step={5000}
+                      value={trafficProfile.peak_qps}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        setBackendSimResult(null);
+                        setTrafficProfile((prev) => ({
+                          ...prev,
+                          peak_qps: val,
+                          base_qps: Math.round(val * 0.2),
+                        }));
+                      }}
+                      className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-900 rounded-lg"
+                    />
+                    <div className="flex justify-between text-[9px] text-slate-500 font-mono">
+                      <span>5K</span>
+                      <span>50K</span>
+                      <span>100K</span>
+                      <span>250K</span>
+                    </div>
+                  </div>
+
+                  {/* Concurrent Users Slider */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400">Concurrent Users</span>
+                      <span className="font-bold text-cyan-300 font-mono">
+                        {trafficProfile.concurrent_users.toLocaleString()}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={10000}
+                      max={2000000}
+                      step={10000}
+                      value={trafficProfile.concurrent_users}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        setBackendSimResult(null);
+                        setTrafficProfile((prev) => ({ ...prev, concurrent_users: val }));
+                      }}
+                      className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-900 rounded-lg"
+                    />
+                  </div>
+
+                  {/* Read / Write Ratio Slider */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400">Read / Write Ratio</span>
+                      <span className="font-bold font-mono">
+                        <span className="text-emerald-400">
+                          {Math.round(trafficProfile.read_ratio * 100)}% Read
+                        </span>
+                        <span className="text-slate-500"> / </span>
+                        <span className="text-rose-400">
+                          {Math.round((1 - trafficProfile.read_ratio) * 100)}% Write
+                        </span>
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.05}
+                      max={0.99}
+                      step={0.05}
+                      value={trafficProfile.read_ratio}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setBackendSimResult(null);
+                        setTrafficProfile((prev) => ({ ...prev, read_ratio: val }));
+                      }}
+                      className="w-full accent-emerald-400 cursor-pointer h-1.5 bg-slate-900 rounded-lg"
+                    />
+                  </div>
+
+                  {/* Cache Hit Ratio Slider */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400">Cache Hit Ratio</span>
+                      <span className="font-bold text-rose-300 font-mono">
+                        {Math.round(trafficProfile.cache_hit_ratio * 100)}% Hit
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.1}
+                      max={0.99}
+                      step={0.05}
+                      value={trafficProfile.cache_hit_ratio}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setBackendSimResult(null);
+                        setTrafficProfile((prev) => ({ ...prev, cache_hit_ratio: val }));
+                      }}
+                      className="w-full accent-rose-400 cursor-pointer h-1.5 bg-slate-900 rounded-lg"
+                    />
+                  </div>
+
+                  {/* Payload Size & Network Latency */}
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-slate-400">Payload</span>
+                        <span className="font-bold text-slate-200">{trafficProfile.payload_kb} KB</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={1}
+                        max={50}
+                        step={1}
+                        value={trafficProfile.payload_kb}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          setBackendSimResult(null);
+                          setTrafficProfile((prev) => ({ ...prev, payload_kb: val }));
+                        }}
+                        className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-900 rounded-lg"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-slate-400">Net Latency</span>
+                        <span className="font-bold text-slate-200">
+                          {trafficProfile.network_latency_ms} ms
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={1}
+                        max={100}
+                        step={1}
+                        value={trafficProfile.network_latency_ms}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          setBackendSimResult(null);
+                          setTrafficProfile((prev) => ({ ...prev, network_latency_ms: val }));
+                        }}
+                        className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-900 rounded-lg"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. ESTIMATED METRICS TELEMETRY GRID */}
+                <div className="p-3.5 rounded-2xl border border-white/[0.08] bg-slate-950/70 space-y-3">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                    <span className="flex items-center gap-1.5">
+                      <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Estimated Telemetry</span>
+                    </span>
+                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30 font-mono">
+                      Estimated
+                    </span>
+                  </div>
+
+                  {/* Throughput Metric */}
+                  <div className="p-3 rounded-xl bg-slate-900/80 border border-white/[0.06] space-y-2">
+                    <div className="flex items-baseline justify-between">
+                      <div>
+                        <div className="text-[10px] text-slate-400 uppercase">Throughput Delivered</div>
+                        <div className="text-xl font-bold font-mono text-cyan-300">
+                          {activeSimulationResult.throughput_qps.toLocaleString()}{" "}
+                          <span className="text-xs text-slate-400">RPS</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[10px] text-slate-400">Peak Target</div>
+                        <div className="text-xs font-mono text-slate-300">
+                          {trafficProfile.peak_qps.toLocaleString()} RPS
+                        </div>
+                      </div>
+                    </div>
+                    <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden border border-white/[0.04]">
+                      <div
+                        className={`h-full rounded-full transition-all duration-300 ${
+                          activeSimulationResult.error_rate > 5
+                            ? "bg-gradient-to-r from-amber-500 to-red-500"
+                            : "bg-cyan-400"
+                        }`}
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            Math.round(
+                              (activeSimulationResult.throughput_qps /
+                                Math.max(1, trafficProfile.peak_qps)) *
+                                100
+                            )
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Latency Percentiles Pill */}
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="p-2 rounded-xl bg-slate-900/60 border border-white/[0.06]">
+                      <div className="text-[10px] text-slate-400">p50</div>
+                      <div className="text-xs font-bold font-mono text-slate-200 mt-0.5">
+                        {activeSimulationResult.p50_latency_ms}ms
+                      </div>
+                    </div>
+                    <div className="p-2 rounded-xl bg-slate-900/60 border border-white/[0.06]">
+                      <div className="text-[10px] text-slate-400">p95</div>
+                      <div className="text-xs font-bold font-mono text-amber-300 mt-0.5">
+                        {activeSimulationResult.p95_latency_ms}ms
+                      </div>
+                    </div>
+                    <div className="p-2 rounded-xl bg-slate-900/60 border border-white/[0.06]">
+                      <div className="text-[10px] text-slate-400">p99</div>
+                      <div
+                        className={`text-xs font-bold font-mono mt-0.5 ${
+                          activeSimulationResult.p99_latency_ms >= 150
+                            ? "text-red-400"
+                            : "text-emerald-300"
+                        }`}
+                      >
+                        {activeSimulationResult.p99_latency_ms}ms
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Error Rate & Dropped Requests */}
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/60 border border-white/[0.06]">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className={`w-2 h-2 rounded-full ${
+                          activeSimulationResult.error_rate > 0
+                            ? "bg-red-400 animate-pulse"
+                            : "bg-emerald-400"
+                        }`}
+                      />
+                      <span className="text-[11px] text-slate-300">
+                        {activeSimulationResult.error_rate > 0
+                          ? `${activeSimulationResult.error_rate}% Error Rate`
+                          : "0.0% Error Rate"}
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      {activeSimulationResult.dropped_requests.toLocaleString()} dropped
+                    </span>
+                  </div>
+
+                  {/* Resource Saturation Meters */}
+                  <div className="space-y-2 pt-1">
+                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                      Hardware Saturation
+                    </div>
+
+                    {/* CPU */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-slate-400">CPU Compute Load</span>
+                        <span
+                          className={`font-mono font-bold ${
+                            activeSimulationResult.cpu_utilization >= 85
+                              ? "text-red-400"
+                              : activeSimulationResult.cpu_utilization >= 70
+                              ? "text-amber-400"
+                              : "text-slate-200"
+                          }`}
+                        >
+                          {activeSimulationResult.cpu_utilization}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden border border-white/[0.04]">
+                        <div
+                          className={`h-full transition-all duration-300 ${
+                            activeSimulationResult.cpu_utilization >= 85
+                              ? "bg-red-500"
+                              : activeSimulationResult.cpu_utilization >= 70
+                              ? "bg-amber-400"
+                              : "bg-cyan-400"
+                          }`}
+                          style={{
+                            width: `${Math.min(100, activeSimulationResult.cpu_utilization)}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Memory */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-slate-400">Memory Pressure</span>
+                        <span className="font-mono font-bold text-slate-200">
+                          {activeSimulationResult.memory_utilization}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden border border-white/[0.04]">
+                        <div
+                          className="h-full bg-indigo-400 transition-all duration-300"
+                          style={{
+                            width: `${Math.min(100, activeSimulationResult.memory_utilization)}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Database IOPS */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-slate-400">Database IOPS Load</span>
+                        <span
+                          className={`font-mono font-bold ${
+                            activeSimulationResult.database_utilization >= 85
+                              ? "text-red-400"
+                              : activeSimulationResult.database_utilization >= 70
+                              ? "text-amber-400"
+                              : "text-slate-200"
+                          }`}
+                        >
+                          {activeSimulationResult.database_utilization}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden border border-white/[0.04]">
+                        <div
+                          className={`h-full transition-all duration-300 ${
+                            activeSimulationResult.database_utilization >= 85
+                              ? "bg-red-500"
+                              : activeSimulationResult.database_utilization >= 70
+                              ? "bg-amber-400"
+                              : "bg-emerald-400"
+                          }`}
+                          style={{
+                            width: `${Math.min(100, activeSimulationResult.database_utilization)}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Queue Depth */}
+                    <div className="flex items-center justify-between text-[10px] pt-1 text-slate-400">
+                      <span>Message Queue Backlog</span>
+                      <span className="font-mono text-slate-200 font-bold">
+                        {activeSimulationResult.queue_depth.toLocaleString()} msgs
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. AUTOMATED PRIMARY BOTTLENECK IDENTIFICATION & REMEDIATION */}
+                <div className="space-y-2">
+                  <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Flame className="w-3.5 h-3.5 text-red-400" />
+                    <span>Bottleneck Analysis</span>
+                  </div>
+
+                  {activeSimulationResult.bottleneck_node_id ? (
+                    <div className="p-3.5 rounded-2xl border border-red-500/50 bg-gradient-to-br from-red-950/40 via-[#130b12] to-slate-950 shadow-xl shadow-red-950/20 space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="px-2 py-0.5 rounded text-[9px] font-black bg-red-600 text-white uppercase tracking-wider shadow-sm animate-pulse">
+                              PRIMARY BOTTLENECK
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {activeSimulationResult.bottleneck_type}
+                            </span>
+                          </div>
+                          <h4 className="text-xs font-bold text-white mt-1.5">
+                            {activeSimulationResult.bottleneck_node_name}
+                          </h4>
+                        </div>
+
+                        <span className="text-xs font-mono font-bold text-red-400 bg-red-950/80 px-2 py-1 rounded-lg border border-red-800/60">
+                          {activeSimulationResult.bottleneck_utilization}% Saturated
+                        </span>
+                      </div>
+
+                      {/* First Principles Queueing Explanation */}
+                      <p className="text-[11px] text-slate-200 font-light leading-relaxed">
+                        {activeSimulationResult.bottleneck_explanation}
+                      </p>
+
+                      {/* AI Architect Deep Analysis */}
+                      {activeSimulationResult.ai_bottleneck_explanation && (
+                        <div className="p-2.5 rounded-xl bg-slate-950/80 border border-cyan-500/30 text-[10px] space-y-1">
+                          <div className="flex items-center gap-1 text-cyan-300 font-bold">
+                            <Brain className="w-3 h-3 text-cyan-400" />
+                            <span>AI Architect Queueing Critique</span>
+                          </div>
+                          <p className="text-slate-300 font-light leading-relaxed">
+                            {activeSimulationResult.ai_bottleneck_explanation}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Suggested Remediation Box & One-Click Fix */}
+                      <div className="p-2.5 rounded-xl bg-slate-950/90 border border-white/[0.08] space-y-2">
+                        <div className="text-[10px] text-amber-300 font-bold flex items-center gap-1">
+                          <Wrench className="w-3 h-3 text-amber-400" />
+                          <span>Recommended Remediation</span>
+                        </div>
+                        <p className="text-[10px] text-slate-300 font-light leading-relaxed">
+                          {activeSimulationResult.bottleneck_remediation}
+                        </p>
+
+                        {activeSimulationResult.suggested_action && (
+                          <button
+                            onClick={() =>
+                              handleApplySimulationFix(activeSimulationResult.suggested_action!)
+                            }
+                            className="w-full py-2 rounded-xl bg-gradient-to-r from-red-600 via-amber-600 to-yellow-600 hover:from-red-500 hover:to-yellow-500 text-slate-950 font-black text-[11px] shadow-lg shadow-red-950/50 transition flex items-center justify-center gap-1.5"
+                          >
+                            <Zap className="w-3.5 h-3.5 text-slate-950 fill-current" />
+                            <span>⚡ Apply Fix to Canvas</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-2xl border border-emerald-500/30 bg-emerald-950/15 text-emerald-300 space-y-1.5">
+                      <div className="flex items-center gap-2 text-xs font-bold">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <span>System Healthy • No Bottlenecks</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 font-light leading-relaxed">
+                        All architectural tiers operate safely with &gt;35% headroom under{" "}
+                        {trafficProfile.peak_qps.toLocaleString()} peak RPS. Ingress, compute, and
+                        persistence paths satisfy target SLAs.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* 5. TIMELINE SCRUBBER & BACKEND SIMULATION ENGINE */}
+                <div className="p-3.5 rounded-2xl border border-white/[0.08] bg-slate-950/70 space-y-3">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Timeline Scrubber</span>
+                    </span>
+                    <span className="text-[10px] text-cyan-400 font-mono">
+                      Second {currentTick ? currentTick.second : 0}s / {trafficProfile.duration_sec}s
+                    </span>
+                  </div>
+
+                  {/* Time Slider & Play Controls */}
+                  <div className="flex items-center gap-2.5">
+                    <button
+                      onClick={() => setIsSimulationRunning(!isSimulationRunning)}
+                      className={`p-2 rounded-xl font-bold transition flex items-center justify-center ${
+                        isSimulationRunning
+                          ? "bg-amber-500 text-slate-950 hover:bg-amber-400"
+                          : "bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+                      }`}
+                      title={
+                        isSimulationRunning
+                          ? "Pause timeline playback"
+                          : "Play synthetic traffic timeline"
+                      }
+                    >
+                      {isSimulationRunning ? (
+                        <Pause className="w-3.5 h-3.5 fill-current" />
+                      ) : (
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                      )}
+                    </button>
+
+                    <input
+                      type="range"
+                      min={0}
+                      max={Math.max(1, activeSimulationResult.ticks.length - 1)}
+                      value={simTickIndex}
+                      onChange={(e) => {
+                        setIsSimulationRunning(false);
+                        setSimTickIndex(parseInt(e.target.value, 10));
+                      }}
+                      className="flex-1 accent-cyan-400 cursor-pointer h-1.5 bg-slate-900 rounded-lg"
+                    />
+
+                    <button
+                      onClick={() => {
+                        setIsSimulationRunning(false);
+                        setSimTickIndex(0);
+                      }}
+                      className="p-2 rounded-xl bg-slate-900 border border-white/[0.08] text-slate-400 hover:text-white transition"
+                      title="Reset timeline to second 0"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Current Tick Metrics Mini-Ticker */}
+                  {currentTick && (
+                    <div className="p-2 rounded-xl bg-slate-900/60 border border-white/[0.04] flex items-center justify-between text-[10px] font-mono">
+                      <span className="text-slate-400">
+                        Load at {currentTick.second}s:{" "}
+                        <span className="text-cyan-300 font-bold">
+                          {Math.round(currentTick.qps).toLocaleString()} RPS
+                        </span>
+                      </span>
+                      <span className="text-slate-400">
+                        Latency:{" "}
+                        <span className="text-amber-300 font-bold">
+                          {Math.round(currentTick.p95_latency_ms || currentTick.p99_latency_ms)}ms
+                        </span>
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Deep Backend Discrete Event Trace */}
+                  <div className="pt-2 border-t border-white/[0.06]">
+                    <button
+                      onClick={handleRunBackendTrace}
+                      disabled={isBackendSimulating}
+                      className="w-full py-2 rounded-xl bg-white/[0.04] hover:bg-cyan-500/10 border border-white/[0.08] hover:border-cyan-500/30 text-slate-200 hover:text-cyan-300 font-bold text-xs transition flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {isBackendSimulating ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
+                          <span>Simulating on Backend Engine...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>Run Deep Backend Simulation Trace</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === "requirements" ? (
+            /* ============================================================== */
+            /* REQUIREMENTS SPECIFICATION PANEL                              */
+            /* ============================================================== */
+            <div className="flex-1 flex flex-col overflow-y-auto">
+              <div className="p-4 border-b border-white/[0.06] bg-slate-900/40 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                    <Target className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-white font-mono uppercase">
+                      Problem Requirements
+                    </h3>
+                    <p className="text-[10px] text-slate-400 font-mono">
+                      Design YouTube • Global Video Streaming
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 space-y-4 font-mono text-xs">
+                {/* Problem Summary Hero */}
+                <div className="p-3.5 rounded-2xl border border-white/[0.08] bg-slate-950/70 space-y-2">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-cyan-300">
+                    <span>Design YouTube</span>
+                    <span className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 text-[10px]">
+                      Target: 50K+ RPS
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 font-light leading-relaxed">
+                    Design a global, hyper-scale video sharing and streaming service capable of
+                    handling millions of concurrent viewers, petabyte-scale video encoding, and
+                    resilient sub-200ms playback startup.
+                  </p>
+                </div>
+
+                {/* Functional Requirements */}
+                <div className="space-y-2">
+                  <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Functional Requirements</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {[
+                      "1. Asynchronous Video Upload: Chunked, resumable multi-part upload pipeline with distributed transcoding into multiple resolutions (1080p, 720p, 480p).",
+                      "2. Global Low-Latency Streaming: Adaptive bitrate streaming (HLS/DASH) served from distributed CDN edge caches.",
+                      "3. Metadata & Search: Fast search across video titles, tags, and creator channels with dedicated read replicas and cache.",
+                      "4. Social Engagements: Record view counts, likes, and comments with eventual consistency.",
+                    ].map((req, idx) => (
+                      <div
+                        key={idx}
+                        className="p-2.5 rounded-xl border border-white/[0.06] bg-slate-950/50 text-[11px] text-slate-300 font-light leading-relaxed"
+                      >
+                        {req}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Non-Functional Requirements */}
+                <div className="space-y-2">
+                  <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Non-Functional SLAs</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {[
+                      "High Availability: 99.99% uptime. Streaming must never experience global downtime.",
+                      "Low Latency Playback: Video buffering initiation p95 < 200ms globally.",
+                      "Throughput: Support 50,000+ peak ingress requests/sec and millions of concurrent viewers.",
+                      "Read-Heavy: Extreme 99:1 read-to-write traffic distribution.",
+                    ].map((nfr, idx) => (
+                      <div
+                        key={idx}
+                        className="p-2.5 rounded-xl border border-white/[0.06] bg-slate-950/50 text-[11px] text-slate-300 font-light leading-relaxed"
+                      >
+                        {nfr}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Capacity Estimation */}
+                <div className="p-3.5 rounded-2xl border border-white/[0.08] bg-slate-950/70 space-y-2">
+                  <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                    Capacity Estimations
+                  </div>
+                  <div className="space-y-1 text-[11px] text-slate-400">
+                    <div className="flex justify-between">
+                      <span>Daily Active Users:</span>
+                      <span className="text-white font-bold">100M DAU</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Ingress Metadata QPS:</span>
+                      <span className="text-white font-bold">50,000 RPS</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>New Video Uploads:</span>
+                      <span className="text-white font-bold">500 hrs / minute</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Daily Storage Added:</span>
+                      <span className="text-white font-bold">~25 TB / day</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === "evaluation" ? (
+            /* ============================================================== */
+            /* ARCHITECTURE EVALUATION PANEL                                 */
+            /* ============================================================== */
+            <div className="flex-1 flex flex-col overflow-y-auto">
+              <div className="p-4 border-b border-white/[0.06] bg-slate-900/40 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-white font-mono uppercase">
+                      Architecture Evaluation
+                    </h3>
+                    <p className="text-[10px] text-slate-400 font-mono">
+                      Automated Invariant Scoring
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 space-y-4 font-mono text-xs">
+                {/* Health Score Hero Card */}
+                <div className="p-4 rounded-2xl border border-white/[0.08] bg-gradient-to-br from-slate-900/90 to-[#091224] shadow-lg space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                        Health Score
+                      </div>
+                      <div className="text-3xl font-black font-mono text-white mt-0.5">
+                        {validationResponse.health_score}{" "}
+                        <span className="text-xs text-slate-400">/ 100</span>
+                      </div>
+                    </div>
+                    <span
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase border ${
+                        validationResponse.status === "PASS"
+                          ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                          : validationResponse.status === "NEEDS_IMPROVEMENT"
+                          ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                          : "bg-red-500/20 text-red-300 border-red-500/40"
+                      }`}
+                    >
+                      {validationResponse.status.replace(/_/g, " ")}
+                    </span>
+                  </div>
+
+                  <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-white/[0.06]">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        validationResponse.health_score >= 85
+                          ? "bg-gradient-to-r from-emerald-500 to-cyan-400"
+                          : validationResponse.health_score >= 60
+                          ? "bg-gradient-to-r from-amber-500 to-yellow-400"
+                          : "bg-gradient-to-r from-red-600 to-rose-400"
+                      }`}
+                      style={{ width: `${validationResponse.health_score}%` }}
+                    />
+                  </div>
+
+                  <p className="text-[11px] text-slate-300 font-light leading-relaxed">
+                    {validationResponse.summary}
+                  </p>
+                </div>
+
+                {/* Monthly Cost Card */}
+                <div className="p-3.5 rounded-2xl border border-white/[0.08] bg-slate-950/70 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-[11px] font-bold text-slate-300 uppercase">
+                      Estimated Cloud Cost
+                    </span>
+                  </div>
+                  <span className="text-xs font-bold text-emerald-400 font-mono">
+                    ${validationResponse.estimated_monthly_cost.toLocaleString()}/mo
+                  </span>
+                </div>
+
+                {/* Violations Summary */}
+                <div className="space-y-2">
+                  <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                    <span>Active Invariant Issues ({validationResponse.violations.length})</span>
+                  </div>
+                  {validationResponse.violations.length === 0 ? (
+                    <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-950/15 text-emerald-300 text-center text-[11px]">
+                      All first-principles system invariants are verified!
+                    </div>
+                  ) : (
+                    validationResponse.violations.slice(0, 4).map((v) => (
+                      <div
+                        key={v.rule_id}
+                        className="p-2.5 rounded-xl border border-white/[0.06] bg-slate-950/60 space-y-1"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-white">{v.rule_name}</span>
+                          <span
+                            className={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase ${
+                              v.severity === "critical"
+                                ? "bg-red-950 text-red-400"
+                                : "bg-amber-950 text-amber-400"
+                            }`}
+                          >
+                            {v.severity}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-300 font-light line-clamp-2">
+                          {v.message}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setShowValidationDrawer(true)}
+                  className="w-full py-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm"
+                >
+                  <ShieldCheck className="w-4 h-4 text-cyan-400" />
+                  <span>Open Full Rule Engine Drawer</span>
+                </button>
+              </div>
+            </div>
+          ) : activeNode ? (
+            /* ============================================================== */
+            /* ARCHITECTURE TAB: NODE CONFIGURATION                           */
+            /* ============================================================== */
             <div className="flex-1 flex flex-col overflow-y-auto">
               <div className="p-4 border-b border-white/[0.06] flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -1973,161 +3137,135 @@ function SimulatorContent() {
                   </div>
                 )}
 
-                {/* Replicas Slider */}
+                {/* Replicas */}
                 <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
+                  <div className="flex justify-between items-center">
                     <label className="text-[11px] text-slate-400 font-semibold">
                       REPLICAS (INSTANCES)
                     </label>
                     <span className="text-cyan-400 font-bold">
-                      {activeNode.config.replicas}
+                      {activeNode.config?.replicas || 1}
                     </span>
                   </div>
                   <input
                     type="range"
                     min={1}
-                    max={16}
-                    value={activeNode.config.replicas}
+                    max={12}
+                    value={activeNode.config?.replicas || 1}
                     onChange={(e) => {
-                      const replicas = parseInt(e.target.value);
-                      commitGraphChange(
-                        (prev) => ({
-                          ...prev,
-                          nodes: prev.nodes.map((n) =>
-                            n.id === activeNode.id
-                              ? { ...n, config: { ...n.config, replicas } }
-                              : n
-                          ),
-                        }),
-                        "UPDATE_CONFIGURATION",
-                        `Updated '${activeNode.name}' replicas to ${replicas}`,
-                        { nodeId: activeNode.id }
-                      );
+                      const reps = parseInt(e.target.value, 10);
+                      handleUpdateNodeConfig(activeNode.id, { replicas: reps });
                     }}
-                    className="w-full accent-cyan-400 cursor-pointer"
+                    className="w-full accent-cyan-500 cursor-pointer h-1.5 bg-slate-900 rounded-lg"
                   />
                 </div>
 
                 {/* QPS Capacity */}
                 <div className="space-y-1.5">
                   <label className="text-[11px] text-slate-400 font-semibold">
-                    QPS CAPACITY PER NODE
+                    QPS CAPACITY PER REPLICA
                   </label>
                   <input
                     type="number"
-                    value={activeNode.config.qps_capacity}
+                    value={activeNode.config?.qps_capacity || 5000}
                     onChange={(e) => {
-                      const qps = parseInt(e.target.value) || 0;
-                      commitGraphChange(
-                        (prev) => ({
-                          ...prev,
-                          nodes: prev.nodes.map((n) =>
-                            n.id === activeNode.id
-                              ? { ...n, config: { ...n.config, qps_capacity: qps } }
-                              : n
-                          ),
-                        }),
-                        "UPDATE_CONFIGURATION",
-                        `Updated '${activeNode.name}' QPS capacity to ${qps}`,
-                        { nodeId: activeNode.id }
-                      );
+                      const qps = parseInt(e.target.value, 10);
+                      handleUpdateNodeConfig(activeNode.id, { qps_capacity: qps });
                     }}
                     className="w-full bg-slate-950 border border-white/[0.08] focus:border-cyan-500/50 rounded-lg px-3 py-1.5 text-white focus:outline-none"
                   />
                 </div>
 
-                {/* Latency (ms) */}
+                {/* Latency ms */}
                 <div className="space-y-1.5">
                   <label className="text-[11px] text-slate-400 font-semibold">
-                    PROCESSING LATENCY (MS)
+                    BASE PROCESSING LATENCY (MS)
                   </label>
                   <input
                     type="number"
-                    step={0.5}
-                    value={activeNode.config.latency_ms}
+                    value={activeNode.config?.latency_ms || 5}
                     onChange={(e) => {
-                      const lat = parseFloat(e.target.value) || 1;
-                      commitGraphChange(
-                        (prev) => ({
-                          ...prev,
-                          nodes: prev.nodes.map((n) =>
-                            n.id === activeNode.id
-                              ? { ...n, config: { ...n.config, latency_ms: lat } }
-                              : n
-                          ),
-                        }),
-                        "UPDATE_CONFIGURATION",
-                        `Updated '${activeNode.name}' latency to ${lat}ms`,
-                        { nodeId: activeNode.id }
-                      );
+                      const lat = parseInt(e.target.value, 10);
+                      handleUpdateNodeConfig(activeNode.id, { latency_ms: lat });
                     }}
                     className="w-full bg-slate-950 border border-white/[0.08] focus:border-cyan-500/50 rounded-lg px-3 py-1.5 text-white focus:outline-none"
                   />
                 </div>
 
-                {/* Cache Eviction Policy (if cache) */}
-                {activeNode.category === "cache" && (
+                {/* Storage GB if applicable */}
+                {activeNode.category === "database" && (
                   <div className="space-y-1.5">
                     <label className="text-[11px] text-slate-400 font-semibold">
-                      CACHE EVICTION POLICY
+                      STORAGE CAPACITY (GB)
                     </label>
-                    <select
-                      value={activeNode.config.cache_policy || "LRU"}
+                    <input
+                      type="number"
+                      value={activeNode.config?.storage_gb || 500}
                       onChange={(e) => {
-                        const policy = e.target.value as any;
-                        commitGraphChange(
-                          (prev) => ({
-                            ...prev,
-                            nodes: prev.nodes.map((n) =>
-                              n.id === activeNode.id
-                                ? { ...n, config: { ...n.config, cache_policy: policy } }
-                                : n
-                            ),
-                          }),
-                          "UPDATE_CONFIGURATION",
-                          `Changed cache eviction policy to ${policy}`,
-                          { nodeId: activeNode.id }
-                        );
+                        const st = parseInt(e.target.value, 10);
+                        handleUpdateNodeConfig(activeNode.id, { storage_gb: st });
                       }}
                       className="w-full bg-slate-950 border border-white/[0.08] focus:border-cyan-500/50 rounded-lg px-3 py-1.5 text-white focus:outline-none"
-                    >
-                      <option value="LRU">LRU (Least Recently Used)</option>
-                      <option value="LFU">LFU (Least Frequently Used)</option>
-                      <option value="FIFO">FIFO (First-In First-Out)</option>
-                      <option value="ARC">ARC (Adaptive Replacement)</option>
-                    </select>
+                    />
                   </div>
                 )}
 
-                {/* Replication Mode (if database) */}
+                {/* Cache TTL & Policy */}
+                {activeNode.category === "cache" && (
+                  <>
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] text-slate-400 font-semibold">
+                        CACHE EVICTION POLICY
+                      </label>
+                      <select
+                        value={activeNode.config?.cache_policy || "LRU"}
+                        onChange={(e) => {
+                          handleUpdateNodeConfig(activeNode.id, {
+                            cache_policy: e.target.value as any,
+                          });
+                        }}
+                        className="w-full bg-slate-950 border border-white/[0.08] focus:border-cyan-500/50 rounded-lg px-3 py-1.5 text-white focus:outline-none"
+                      >
+                        <option value="LRU">LRU (Least Recently Used)</option>
+                        <option value="LFU">LFU (Least Frequently Used)</option>
+                        <option value="FIFO">FIFO (First In First Out)</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] text-slate-400 font-semibold">
+                        CACHE TTL (SECONDS)
+                      </label>
+                      <input
+                        type="number"
+                        value={activeNode.config?.cache_ttl_sec || 3600}
+                        onChange={(e) => {
+                          const ttl = parseInt(e.target.value, 10);
+                          handleUpdateNodeConfig(activeNode.id, { cache_ttl_sec: ttl });
+                        }}
+                        className="w-full bg-slate-950 border border-white/[0.08] focus:border-cyan-500/50 rounded-lg px-3 py-1.5 text-white focus:outline-none"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Replication Mode for DB */}
                 {activeNode.category === "database" && (
                   <div className="space-y-1.5">
                     <label className="text-[11px] text-slate-400 font-semibold">
                       REPLICATION STRATEGY
                     </label>
                     <select
-                      value={activeNode.config.replication_mode || "sync"}
+                      value={activeNode.config?.replication_mode || "sync"}
                       onChange={(e) => {
-                        const repMode = e.target.value as any;
-                        commitGraphChange(
-                          (prev) => ({
-                            ...prev,
-                            nodes: prev.nodes.map((n) =>
-                              n.id === activeNode.id
-                                ? { ...n, config: { ...n.config, replication_mode: repMode } }
-                                : n
-                            ),
-                          }),
-                          "UPDATE_CONFIGURATION",
-                          `Set replication mode to ${repMode}`,
-                          { nodeId: activeNode.id }
-                        );
+                        handleUpdateNodeConfig(activeNode.id, {
+                          replication_mode: e.target.value as any,
+                        });
                       }}
                       className="w-full bg-slate-950 border border-white/[0.08] focus:border-cyan-500/50 rounded-lg px-3 py-1.5 text-white focus:outline-none"
                     >
                       <option value="sync">Synchronous (Strong Consistency)</option>
                       <option value="async">Asynchronous (Eventual Consistency)</option>
-                      <option value="semi_sync">Semi-Synchronous</option>
                     </select>
                   </div>
                 )}
@@ -2152,7 +3290,9 @@ function SimulatorContent() {
               </div>
             </div>
           ) : activeEdge ? (
-            /* Edge Selected */
+            /* ============================================================== */
+            /* ARCHITECTURE TAB: EDGE CONFIGURATION                           */
+            /* ============================================================== */
             <div className="flex-1 flex flex-col overflow-y-auto">
               <div className="p-4 border-b border-white/[0.06] flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -2221,7 +3361,9 @@ function SimulatorContent() {
               </div>
             </div>
           ) : (
-            /* Blank State */
+            /* ============================================================== */
+            /* ARCHITECTURE TAB: BLANK STATE                                  */
+            /* ============================================================== */
             <div className="flex-1 p-6 flex flex-col items-center justify-center text-center text-slate-500 font-mono space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-white/[0.02] border border-white/[0.06] flex items-center justify-center text-slate-400">
                 <Sliders className="w-5 h-5" />
