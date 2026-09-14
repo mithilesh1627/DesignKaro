@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { AuthModal } from "@/components/AuthModal";
 import { Footer } from "@/components/Footer";
+import { Navigation } from "@/components/Navigation";
 import { useAuthStore } from "@/lib/authStore";
 
 interface ArchNode {
@@ -411,105 +412,8 @@ export default function LandingPage() {
 
   return (
     <div className="bg-[#050914] text-slate-200 min-h-screen w-full font-sans antialiased relative selection:bg-cyan-500 selection:text-slate-950">
-      {/* ==================== FIXED TOP HEADER ==================== */}
-      <header className="fixed top-0 inset-x-0 z-50 h-16 border-b border-white/[0.06] bg-slate-950/80 backdrop-blur-2xl px-6 sm:px-10 flex items-center justify-between">
-        <div className="flex items-center gap-6">
-          <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-indigo-600 p-[1px] shadow-lg shadow-cyan-500/15">
-              <div className="w-full h-full bg-[#050914] rounded-[10px] flex items-center justify-center">
-                <Layers className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform" />
-              </div>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-lg font-bold tracking-tight text-white font-display">
-                Design<span className="text-cyan-400">Karo</span>
-              </span>
-              <span className="text-[10px] text-slate-400 font-light hidden sm:block tracking-wide">
-                Socho. Design Karo. Scale Karo.
-              </span>
-            </div>
-          </Link>
-
-          {/* Quick Route Nav - Visible to all visitors */}
-          <nav className="hidden lg:flex items-center gap-1 font-mono text-xs text-slate-400">
-            <Link
-              href="/learn"
-              className="px-3 py-1.5 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
-            >
-              LEARN
-            </Link>
-            <Link
-              href="/practice"
-              className="px-3 py-1.5 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
-            >
-              PRACTICE
-            </Link>
-            <Link
-              href="/design"
-              className="px-3 py-1.5 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
-            >
-              CANVAS
-            </Link>
-            <Link
-              href="/simulate"
-              className="px-3 py-1.5 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
-            >
-              SIMULATE
-            </Link>
-            <Link
-              href="/interview"
-              className="px-3 py-1.5 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
-            >
-              INTERVIEW
-            </Link>
-            <Link
-              href="/review"
-              className="px-3 py-1.5 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
-            >
-              REVIEW
-            </Link>
-            <Link
-              href="/progress"
-              className="px-3 py-1.5 rounded-md hover:text-cyan-300 hover:bg-white/[0.04] transition-colors"
-            >
-              PROGRESS
-            </Link>
-          </nav>
-        </div>
-
-        {/* Auth & CTA */}
-        <div className="flex items-center gap-3 sm:gap-4">
-          {isAuthenticated && user ? (
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-mono text-cyan-400 hidden sm:inline">
-                {user.email.split("@")[0]}
-              </span>
-              <button
-                onClick={logout}
-                className="text-xs font-mono text-slate-400 hover:text-rose-400 px-3 py-1.5 rounded-lg hover:bg-white/[0.04] transition"
-              >
-                Sign Out
-              </button>
-            </div>
-          ) : (
-            <>
-              <button
-                onClick={() => setAuthModalOpen(true)}
-                className="text-xs font-mono font-medium text-slate-400 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/[0.04] transition hidden sm:block"
-              >
-                Sign In
-              </button>
-              <button
-                onClick={() => setAuthModalOpen(true)}
-                className="inline-flex items-center gap-2 text-xs font-bold px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-500 hover:from-cyan-400 hover:to-sky-400 text-slate-950 transition duration-200 shadow-md shadow-cyan-500/20 active:scale-95"
-              >
-                <span>Sign Up</span>
-                <ArrowRight className="w-3.5 h-3.5 text-slate-950" />
-              </button>
-            </>
-          )}
-        </div>
-      </header>
+      {/* ==================== GLOBAL NAVIGATION WITH USER DASHBOARD ==================== */}
+      <Navigation />
 
       {/* ==================== HERO SECTION (PERFECTLY CENTERED HEADLINE & CONTEXT ANIMATION) ==================== */}
       <section className="relative w-full h-screen min-h-[640px] flex flex-col justify-center items-center text-center px-4 overflow-hidden pt-16">
@@ -557,19 +461,13 @@ export default function LandingPage() {
               <ArrowRight className="w-4 h-4 text-slate-950" />
             </button>
 
-            <button
-              onClick={() => {
-                if (isAuthenticated && user) {
-                  window.location.href = "/practice";
-                } else {
-                  setAuthModalOpen(true);
-                }
-              }}
+            <Link
+              href="/learn"
               className="inline-flex items-center gap-2.5 px-7 py-4 rounded-2xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.15] text-white font-semibold text-sm sm:text-base transition-all duration-200 backdrop-blur-xl hover:scale-105 active:scale-95"
             >
               <Compass className="w-5 h-5 text-cyan-400" />
-              <span>Practice FAANG Problems</span>
-            </button>
+              <span>Explore Architecture Curriculum</span>
+            </Link>
 
             <a
               href="#simulation-arena"
@@ -1170,9 +1068,9 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ==================== SECTION 4: FAANG PRACTICE PROBLEM CATALOG ==================== */}
+      {/* ==================== SECTION 4: CANONICAL ARCHITECTURE BLUEPRINTS ==================== */}
       <section
-        id="practice-catalog"
+        id="architecture-blueprints"
         className="relative w-full py-20 px-4 sm:px-8 border-t border-white/[0.06] bg-[#060b18]"
       >
         <div className="max-w-7xl mx-auto">
@@ -1180,39 +1078,29 @@ export default function LandingPage() {
             <div>
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/60 border border-cyan-800/40 text-xs font-mono text-cyan-400 mb-2">
                 <Compass className="w-3.5 h-3.5" />
-                <span>FAANG Architecture Catalog</span>
+                <span>Production Architecture Blueprints</span>
               </div>
               <h2 className="text-2xl sm:text-3xl font-extrabold font-display text-white tracking-tight">
-                Practice Real-World Production Systems
+                Explore Real-World Production Systems
               </h2>
               <p className="text-sm text-slate-400 font-light mt-1">
-                Step-by-step interactive scenarios tested against high QPS traffic and chaos conditions.
+                Step-by-step interactive topologies designed for high QPS scale, low latency, and fault tolerance.
               </p>
             </div>
-            <button
-              onClick={() => {
-                if (isAuthenticated && user) {
-                  window.location.href = "/practice";
-                } else {
-                  setAuthModalOpen(true);
-                }
-              }}
+            <Link
+              href="/learn"
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-mono text-xs font-bold transition active:scale-95"
             >
-              <span>View All 50+ Scenarios</span>
+              <span>Explore Curriculum Tracks</span>
               <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+            </Link>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Problem 1 */}
+            {/* Blueprint 1 */}
             <div
               onClick={() => {
-                if (isAuthenticated && user) {
-                  window.location.href = "/practice";
-                } else {
-                  setAuthModalOpen(true);
-                }
+                window.location.href = "/design?template=tinyurl";
               }}
               className="zen-bento-card p-5 rounded-2xl group hover:border-cyan-500/40 transition flex flex-col justify-between cursor-pointer"
             >
@@ -1229,19 +1117,15 @@ export default function LandingPage() {
                 </p>
               </div>
               <div className="mt-4 pt-2 border-t border-white/[0.04] flex items-center justify-between text-[11px] font-mono text-cyan-400">
-                <span>Start Practice</span>
+                <span>Launch Blueprint</span>
                 <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
 
-            {/* Problem 2 */}
+            {/* Blueprint 2 */}
             <div
               onClick={() => {
-                if (isAuthenticated && user) {
-                  window.location.href = "/practice";
-                } else {
-                  setAuthModalOpen(true);
-                }
+                window.location.href = "/design";
               }}
               className="zen-bento-card p-5 rounded-2xl group hover:border-sky-500/40 transition flex flex-col justify-between cursor-pointer"
             >
@@ -1258,19 +1142,15 @@ export default function LandingPage() {
                 </p>
               </div>
               <div className="mt-4 pt-2 border-t border-white/[0.04] flex items-center justify-between text-[11px] font-mono text-sky-400">
-                <span>Start Practice</span>
+                <span>Launch Blueprint</span>
                 <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
 
-            {/* Problem 3 */}
+            {/* Blueprint 3 */}
             <div
               onClick={() => {
-                if (isAuthenticated && user) {
-                  window.location.href = "/practice";
-                } else {
-                  setAuthModalOpen(true);
-                }
+                window.location.href = "/design";
               }}
               className="zen-bento-card p-5 rounded-2xl group hover:border-indigo-500/40 transition flex flex-col justify-between cursor-pointer"
             >
@@ -1287,19 +1167,15 @@ export default function LandingPage() {
                 </p>
               </div>
               <div className="mt-4 pt-2 border-t border-white/[0.04] flex items-center justify-between text-[11px] font-mono text-indigo-400">
-                <span>Start Practice</span>
+                <span>Launch Blueprint</span>
                 <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
 
-            {/* Problem 4 */}
+            {/* Blueprint 4 */}
             <div
               onClick={() => {
-                if (isAuthenticated && user) {
-                  window.location.href = "/practice";
-                } else {
-                  setAuthModalOpen(true);
-                }
+                window.location.href = "/design?template=rate_limiter";
               }}
               className="zen-bento-card p-5 rounded-2xl group hover:border-amber-500/40 transition flex flex-col justify-between cursor-pointer"
             >
@@ -1316,7 +1192,7 @@ export default function LandingPage() {
                 </p>
               </div>
               <div className="mt-4 pt-2 border-t border-white/[0.04] flex items-center justify-between text-[11px] font-mono text-amber-400">
-                <span>Start Practice</span>
+                <span>Launch Blueprint</span>
                 <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
               </div>
             </div>

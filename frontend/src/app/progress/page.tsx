@@ -173,6 +173,9 @@ export default function ProgressPage() {
                 <TrendingUp className="h-6 w-6" />
               </div>
               <div>
+                <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-cyan-950/80 text-cyan-400 border border-cyan-800/40 text-[10px] font-mono mb-1 uppercase tracking-wider font-semibold">
+                  Progress Dashboard
+                </div>
                 <h1 className="text-2xl sm:text-3xl font-extrabold font-display text-white tracking-tight">
                   Readiness &amp; Skill Telemetry
                 </h1>
@@ -348,10 +351,10 @@ export default function ProgressPage() {
               </div>
               <div className="mt-5 pt-3.5 border-t border-white/[0.06] flex gap-2.5">
                 <Link
-                  href="/practice"
-                  className="flex-1 text-center px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-xs font-bold font-mono text-slate-950 transition-all shadow-md shadow-amber-500/20 active:scale-95"
+                  href="/learn"
+                  className="flex-1 text-center px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-500 hover:from-cyan-400 hover:to-sky-400 text-xs font-bold font-mono text-slate-950 transition-all shadow-md shadow-cyan-500/20 active:scale-95"
                 >
-                  Start Practice
+                  Explore Curriculum
                 </Link>
                 <Link
                   href="/design"

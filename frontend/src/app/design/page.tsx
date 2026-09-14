@@ -21,10 +21,9 @@ import "@xyflow/react/dist/style.css";
 import {
   Cpu,
   ArrowLeft,
+  RotateCcw,
   Save,
   Share2,
-  Play,
-  RotateCcw,
   Plus,
   Trash2,
   ShieldCheck,
@@ -42,7 +41,6 @@ import {
   Brain,
   Sliders,
   X,
-  FileCode,
 } from "lucide-react";
 import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
@@ -527,9 +525,9 @@ function DesignCanvasContent() {
           {/* Left Zone: Title & Versioning */}
           <div className="flex items-center gap-3 min-w-0">
             <Link
-              href={problemSlug ? `/practice/${problemSlug}` : "/practice"}
+              href="/learn"
               className="p-2 rounded-xl border border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.06] text-slate-400 hover:text-white transition-all shrink-0"
-              title="Return to practice catalog"
+              title="Return to curriculum"
             >
               <ArrowLeft className="h-4 w-4" />
             </Link>
@@ -582,23 +580,7 @@ function DesignCanvasContent() {
               <span className="hidden sm:inline">AI Mentor</span>
             </button>
 
-            {/* Quick Links to Simulate & Review */}
-            <Link
-              href={`/simulate${currentDesignId ? `?designId=${currentDesignId}` : ""}`}
-              className="px-2.5 py-1.5 rounded-xl border border-white/[0.08] bg-slate-900/80 hover:bg-slate-800 text-slate-300 text-xs font-mono font-medium flex items-center gap-1.5 transition-colors"
-              title="Inject Traffic & Chaos"
-            >
-              <Play className="h-3 w-3 text-amber-400" />
-              <span className="hidden md:inline">Simulate</span>
-            </Link>
-            <Link
-              href={`/review${currentDesignId ? `?designId=${currentDesignId}` : ""}`}
-              className="px-2.5 py-1.5 rounded-xl border border-white/[0.08] bg-slate-900/80 hover:bg-slate-800 text-slate-300 text-xs font-mono font-medium flex items-center gap-1.5 transition-colors"
-              title="9-Dimension Architecture Review"
-            >
-              <FileCode className="h-3 w-3 text-sky-400" />
-              <span className="hidden md:inline">Review</span>
-            </Link>
+
 
             {/* Health Check Button */}
             <button
