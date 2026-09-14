@@ -486,6 +486,10 @@ const SimulatorCustomNode = ({ data }: { data: CustomFlowData }) => {
   );
 };
 
+const SIMULATOR_NODE_TYPES = {
+  simulatorCustomNode: SimulatorCustomNode,
+};
+
 // ============================================================================
 // INITIAL PROBLEM GRAPH PRESETS
 // ============================================================================
@@ -598,6 +602,19 @@ function SimulatorContent() {
   const [userInterviewAnswer, setUserInterviewAnswer] = useState<string>("");
   const [interviewSubmitted, setInterviewSubmitted] = useState<boolean>(false);
 
+  // Active Drag & Drop Tracking State (Ensures 100% Reliable Placement Across All Browsers)
+  const [draggedType, setDraggedType] = useState<string | null>(null);
+  const draggedTypeRef = useRef<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isDragOverCanvas, setIsDragOverCanvas] = useState<boolean>(false);
+
+  const showToast = useCallback((msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage((prev) => (prev === msg ? null : prev));
+    }, 2800);
+  }, []);
+
   // Validation Filters
   const [valSeverityFilter, setValSeverityFilter] = useState<"all" | "critical" | "warning" | "info">("all");
   const [valCategoryFilter, setValCategoryFilter] = useState<"all" | RuleCategory>("all");
@@ -689,7 +706,7 @@ function SimulatorContent() {
     });
   }, [graphState.edges, selectedEdgeId]);
 
-  const nodeTypes = useMemo(() => ({ simulatorCustomNode: SimulatorCustomNode }), []);
+  const nodeTypes = SIMULATOR_NODE_TYPES;
 
   // Filtered component catalog
   const filteredComponents = useMemo(() => {
@@ -859,8 +876,18 @@ function SimulatorContent() {
         { componentType: comp.type, nodeId: newId }
       );
       setSelectedNodeId(newId);
+      showToast(`Added ${comp.name} to architecture canvas`);
+
+      // Ensure canvas pans smoothly to the newly placed component
+      if (reactFlowInstance) {
+        setTimeout(() => {
+          reactFlowInstance.setCenter(pos!.x + 90, pos!.y + 35, {
+            duration: 350,
+          });
+        }, 50);
+      }
     },
-    [commitGraphChange, reactFlowInstance]
+    [commitGraphChange, reactFlowInstance, showToast]
   );
 
   // Delete Component
@@ -1043,29 +1070,90 @@ function SimulatorContent() {
     [selectedEdgeId, commitGraphChange]
   );
 
-  // Drag & Drop Handlers
+  // Drag & Drop Handlers with Contextual Fallbacks for 100% Reliability
   const onDragStart = (event: React.DragEvent, compType: string) => {
-    event.dataTransfer.setData("application/reactflow", compType);
-    event.dataTransfer.setData("text/plain", compType);
-    event.dataTransfer.setData("application/reactflow/type", compType);
-    event.dataTransfer.effectAllowed = "move";
+    draggedTypeRef.current = compType;
+    setDraggedType(compType);
+    if (typeof window !== "undefined") {
+      (window as any).__draggedComponentType = compType;
+    }
+    try {
+      event.dataTransfer.setData("application/reactflow", compType);
+      event.dataTransfer.setData("text/plain", compType);
+      event.dataTransfer.setData("text", compType);
+      event.dataTransfer.setData("application/reactflow/type", compType);
+    } catch {}
+    event.dataTransfer.effectAllowed = "copyMove";
+  };
+
+  const onDragEnd = () => {
+    setIsDragOverCanvas(false);
+    setTimeout(() => {
+      draggedTypeRef.current = null;
+      setDraggedType(null);
+      if (typeof window !== "undefined") {
+        (window as any).__draggedComponentType = null;
+      }
+    }, 400);
   };
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "copy";
+    setIsDragOverCanvas(true);
+  }, []);
+
+  const onDragEnter = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragOverCanvas(true);
+  }, []);
+
+  const onDragLeave = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    // Only reset if exiting outer main boundaries
+    const rect = reactFlowWrapper.current?.getBoundingClientRect();
+    if (
+      rect &&
+      (event.clientX <= rect.left ||
+        event.clientX >= rect.right ||
+        event.clientY <= rect.top ||
+        event.clientY >= rect.bottom)
+    ) {
+      setIsDragOverCanvas(false);
+    }
   }, []);
 
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
-      const compType =
-        event.dataTransfer.getData("application/reactflow") ||
-        event.dataTransfer.getData("text/plain") ||
-        event.dataTransfer.getData("application/reactflow/type");
-      if (!compType) return;
+      event.stopPropagation();
+      setIsDragOverCanvas(false);
 
-      let position = { x: 350, y: 200 };
+      let compType: string | null = null;
+      try {
+        compType =
+          event.dataTransfer?.getData("application/reactflow") ||
+          event.dataTransfer?.getData("text/plain") ||
+          event.dataTransfer?.getData("text") ||
+          event.dataTransfer?.getData("application/reactflow/type") ||
+          null;
+      } catch {}
+
+      if (!compType || compType.trim() === "") {
+        compType =
+          draggedTypeRef.current ||
+          draggedType ||
+          (typeof window !== "undefined" ? (window as any).__draggedComponentType : null);
+      }
+
+      if (!compType) {
+        console.warn("Could not determine dropped component type");
+        return;
+      }
+
+      let position = { x: 400, y: 220 };
       if (reactFlowInstance?.screenToFlowPosition) {
         try {
           const flowPos = reactFlowInstance.screenToFlowPosition({
@@ -1081,7 +1169,14 @@ function SimulatorContent() {
             position = flowPos;
           }
         } catch (err) {
-          console.warn("Could not calculate flow position:", err);
+          console.warn("screenToFlowPosition failed, fallback to offset:", err);
+          if (reactFlowWrapper.current) {
+            const bounds = reactFlowWrapper.current.getBoundingClientRect();
+            position = {
+              x: event.clientX - bounds.left,
+              y: event.clientY - bounds.top,
+            };
+          }
         }
       } else if (reactFlowWrapper.current) {
         const bounds = reactFlowWrapper.current.getBoundingClientRect();
@@ -1092,8 +1187,16 @@ function SimulatorContent() {
       }
 
       handleAddComponent(compType, position);
+
+      setTimeout(() => {
+        draggedTypeRef.current = null;
+        setDraggedType(null);
+        if (typeof window !== "undefined") {
+          (window as any).__draggedComponentType = null;
+        }
+      }, 300);
     },
-    [reactFlowInstance, handleAddComponent]
+    [reactFlowInstance, handleAddComponent, draggedType]
   );
 
   // --------------------------------------------------------------------------
@@ -1579,10 +1682,11 @@ function SimulatorContent() {
                   key={comp.type}
                   draggable
                   onDragStart={(e) => onDragStart(e, comp.type)}
+                  onDragEnd={onDragEnd}
                   onClick={() => handleAddComponent(comp.type)}
                   className={`group p-2.5 rounded-xl border ${comp.borderClass} bg-slate-950/60 hover:bg-slate-900/90 transition-all cursor-grab active:cursor-grabbing shadow-sm flex items-center justify-between select-none`}
                 >
-                  <div className="flex items-center gap-2.5 min-w-0 pointer-events-none">
+                  <div className="flex items-center gap-2.5 min-w-0">
                     <div
                       className={`p-1.5 rounded-lg border ${comp.borderClass} ${comp.bgClass} ${comp.textClass} shrink-0 group-hover:scale-105 transition-transform`}
                     >
@@ -1629,9 +1733,33 @@ function SimulatorContent() {
         <main
           ref={reactFlowWrapper}
           onDragOver={onDragOver}
+          onDragEnter={onDragEnter}
+          onDragLeave={onDragLeave}
           onDrop={onDrop}
-          className="flex-1 h-full relative bg-[#040814]"
+          className={`flex-1 h-full relative bg-[#040814] transition-all duration-150 ${
+            isDragOverCanvas ? "ring-2 ring-inset ring-cyan-500/50 bg-[#040c1d]" : ""
+          }`}
         >
+          {/* Visual Drop Overlay Hint */}
+          {isDragOverCanvas && (
+            <div className="absolute inset-0 z-30 pointer-events-none flex items-center justify-center bg-cyan-950/30 backdrop-blur-[1px] border-2 border-dashed border-cyan-400/60 rounded-lg m-2">
+              <div className="px-4 py-2.5 rounded-xl bg-slate-900/95 border border-cyan-400/50 text-cyan-300 text-xs font-mono font-bold flex items-center gap-2.5 shadow-2xl shadow-cyan-500/30">
+                <Plus className="w-4 h-4 text-cyan-400 animate-bounce" />
+                <span>Drop anywhere to place component</span>
+              </div>
+            </div>
+          )}
+
+          {/* Placement Toast Notification */}
+          {toastMessage && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 pointer-events-none animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="px-3.5 py-1.5 rounded-xl bg-slate-900/95 border border-cyan-500/40 text-white text-xs font-mono flex items-center gap-2 shadow-2xl shadow-cyan-500/20 backdrop-blur-md">
+                <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span>{toastMessage}</span>
+              </div>
+            </div>
+          )}
+
           <ReactFlow
             nodes={flowNodes}
             edges={flowEdges}
