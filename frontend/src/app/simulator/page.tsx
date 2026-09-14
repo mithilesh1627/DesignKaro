@@ -471,7 +471,7 @@ const SimulatorCustomNode = ({ data }: { data: CustomFlowData }) => {
               {replicas > 1 ? `${replicas}x Replicas` : "1 Instance"}
             </span>
             <span>•</span>
-            <span>{node.config.latency_ms || 1}ms</span>
+            <span>{node.config?.latency_ms || 1}ms</span>
           </div>
         </div>
       </div>
@@ -674,6 +674,8 @@ function SimulatorContent() {
         id: n.id,
         type: "simulatorCustomNode",
         position: n.position,
+        initialWidth: 210,
+        initialHeight: 80,
         data: {
           archNode: n,
           isSelected: n.id === selectedNodeId,
@@ -836,6 +838,7 @@ function SimulatorContent() {
       const comp = COMPONENT_CATALOG.find((c) => c.type === compType);
       if (!comp) return;
 
+      const isManualDrop = position && !isNaN(position.x) && !isNaN(position.y);
       let pos = position;
       if (!pos || isNaN(pos.x) || isNaN(pos.y)) {
         if (reactFlowInstance && reactFlowWrapper.current) {
@@ -878,8 +881,8 @@ function SimulatorContent() {
       setSelectedNodeId(newId);
       showToast(`Added ${comp.name} to architecture canvas`);
 
-      // Ensure canvas pans smoothly to the newly placed component
-      if (reactFlowInstance) {
+      // Only pan to the newly placed component if it was added via click (not dropped under cursor)
+      if (!isManualDrop && reactFlowInstance) {
         setTimeout(() => {
           reactFlowInstance.setCenter(pos!.x + 90, pos!.y + 35, {
             duration: 350,
@@ -1325,6 +1328,11 @@ function SimulatorContent() {
 
   // Node Drag on Canvas
   const onNodesChange = useCallback((changes: any) => {
+    const hasMeaningfulChange = changes.some(
+      (c: any) => (c.type === "position" && c.position) || c.type === "remove"
+    );
+    if (!hasMeaningfulChange) return;
+
     setGraphState((prev) => {
       const updatedFlowNodes = applyNodeChanges(
         changes,
@@ -1332,15 +1340,19 @@ function SimulatorContent() {
           id: n.id,
           type: "simulatorCustomNode",
           position: n.position,
+          initialWidth: 210,
+          initialHeight: 80,
           data: { archNode: n },
         }))
       );
       return {
         ...prev,
-        nodes: prev.nodes.map((n) => {
-          const match = updatedFlowNodes.find((fn) => fn.id === n.id);
-          return match ? { ...n, position: match.position } : n;
-        }),
+        nodes: prev.nodes
+          .filter((n) => updatedFlowNodes.some((fn) => fn.id === n.id))
+          .map((n) => {
+            const match = updatedFlowNodes.find((fn) => fn.id === n.id);
+            return match && match.position ? { ...n, position: match.position } : n;
+          }),
       };
     });
   }, []);
@@ -1783,8 +1795,9 @@ function SimulatorContent() {
               setSelectedEdgeId(null);
             }}
             fitView
-            minZoom={0.2}
-            maxZoom={2}
+            fitViewOptions={{ padding: 0.2, includeHiddenNodes: true }}
+            minZoom={0.3}
+            maxZoom={1.8}
             className="bg-[#050914]"
           >
             <Background
