@@ -20,6 +20,7 @@ import {
   LogIn,
   Layers as CanvasIcon,
   BookOpen,
+  Activity,
 } from "lucide-react";
 import { AuthModal } from "./AuthModal";
 import { LlmSettingsModal } from "./LlmSettingsModal";
@@ -33,6 +34,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { label: "LEARN", href: "/learn" },
+  { label: "SIMULATOR", href: "/simulator" },
   { label: "CANVAS", href: "/design" },
 ];
 
@@ -376,6 +378,15 @@ export const Navigation: React.FC<NavigationProps> = () => {
                 >
                   <CanvasIcon className="w-3.5 h-3.5 text-sky-400" />
                   <span>Interactive Architecture Canvas</span>
+                </Link>
+
+                <Link
+                  href="/simulator"
+                  onClick={() => setUserMenuOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-mono text-slate-300 hover:text-cyan-300 hover:bg-white/[0.04] transition"
+                >
+                  <Activity className="w-3.5 h-3.5 text-amber-400" />
+                  <span>AI System Simulator</span>
                 </Link>
 
                 <button
