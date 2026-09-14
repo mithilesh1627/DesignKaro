@@ -9,6 +9,8 @@ import {
   ConnectionType,
   RuleViolation,
   ValidationResponse,
+  AIArchitectCritiqueResponse,
+  AIArchitectSuggestion,
 } from "@/types/simulator";
 
 // ============================================================================
@@ -799,6 +801,55 @@ export async function validateGraphOnBackend(
   }
 
   return response.json();
+}
+
+export async function fetchAIArchitectCritique(
+  graph: ArchitectureGraph,
+  scaleMetadata?: Record<string, any>
+): Promise<AIArchitectCritiqueResponse> {
+  const payload = mapToBackendGraph(graph, scaleMetadata);
+  try {
+    const response = await fetch("http://127.0.0.1:8000/api/v1/designs/critique", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Critique backend responded with HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (err) {
+    console.warn("API critique call failed, using client fallback:", err);
+    const val = evaluateArchitectureRules(graph);
+    return {
+      critique:
+        val.health_score >= 85
+          ? `Solid architecture topology (${val.health_score}/100). Redundancy and isolation are well configured.`
+          : `Detected ${val.violations.length} critical invariants or potential bottlenecks to remediate (${val.health_score}/100).`,
+      suggestions: val.violations.slice(0, 3).map((v) => ({
+        category: (v.category as any) || "architecture",
+        title: v.rule_name.replace(/_/g, " "),
+        description: v.remediation,
+        action:
+          v.rule_id === "RULE-001"
+            ? "scale:database:2"
+            : v.rule_id === "RULE-002"
+            ? "add_component:api_gateway"
+            : v.rule_id === "RULE-003"
+            ? "add_component:cache"
+            : "scale:service:3",
+      })),
+      interview_question:
+        "How will you handle split-brain or data loss during network partitions between primary and replica nodes?",
+      estimated_monthly_cost: `$${val.estimated_monthly_cost.toLocaleString()} - $${(
+        val.estimated_monthly_cost * 1.35
+      ).toLocaleString()}/mo`,
+      provider: "client-heuristic-fallback",
+      fallback_used: true,
+    };
+  }
 }
 
 // Backward compatible helper

@@ -57,6 +57,13 @@ import {
   Wrench,
   ExternalLink,
   Target,
+  Bot,
+  Brain,
+  Check,
+  HelpCircle,
+  RefreshCw,
+  Send,
+  MessageSquare,
 } from "lucide-react";
 import {
   ArchitectureComponentCategory,
@@ -72,6 +79,8 @@ import {
   RuleSeverity,
   RuleCategory,
   ValidationResponse,
+  AIArchitectSuggestion,
+  AIArchitectCritiqueResponse,
 } from "@/types/simulator";
 import {
   createArchitectureEvent,
@@ -79,6 +88,7 @@ import {
   validateArchitectureGraph,
   evaluateArchitectureRules,
   validateGraphOnBackend,
+  fetchAIArchitectCritique,
 } from "@/lib/architectureGraph";
 
 // ============================================================================
@@ -393,12 +403,13 @@ interface CustomFlowData extends Record<string, unknown> {
 }
 
 const SimulatorCustomNode = ({ data }: { data: CustomFlowData }) => {
-  const node = data.archNode;
+  const node = data?.archNode;
+  if (!node) return null;
   const comp =
     COMPONENT_CATALOG.find((c) => c.type === node.type) || COMPONENT_CATALOG[0];
   const Icon = comp.icon;
-  const replicas = node.config.replicas || 1;
-  const severity = data.violationSeverity;
+  const replicas = node.config?.replicas || 1;
+  const severity = data?.violationSeverity;
 
   let borderStyle = `${comp.borderClass} hover:border-cyan-500/60`;
   if (data.isSelected) {
@@ -577,6 +588,15 @@ function SimulatorContent() {
   const [activeTab, setActiveTab] = useState<"requirements" | "architecture" | "simulation" | "evaluation">("architecture");
   const [showEventLog, setShowEventLog] = useState<boolean>(false);
   const [showValidationDrawer, setShowValidationDrawer] = useState<boolean>(false);
+
+  // AI Architect State (Phase 4)
+  const [showAiDrawer, setShowAiDrawer] = useState<boolean>(false);
+  const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
+  const [aiCritique, setAiCritique] = useState<AIArchitectCritiqueResponse | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [appliedSuggestions, setAppliedSuggestions] = useState<Set<string>>(new Set());
+  const [userInterviewAnswer, setUserInterviewAnswer] = useState<string>("");
+  const [interviewSubmitted, setInterviewSubmitted] = useState<boolean>(false);
 
   // Validation Filters
   const [valSeverityFilter, setValSeverityFilter] = useState<"all" | "critical" | "warning" | "info">("all");
@@ -799,10 +819,25 @@ function SimulatorContent() {
       const comp = COMPONENT_CATALOG.find((c) => c.type === compType);
       if (!comp) return;
 
-      const pos = position || {
-        x: 320 + Math.random() * 80,
-        y: 180 + Math.random() * 80,
-      };
+      let pos = position;
+      if (!pos || isNaN(pos.x) || isNaN(pos.y)) {
+        if (reactFlowInstance && reactFlowWrapper.current) {
+          try {
+            const rect = reactFlowWrapper.current.getBoundingClientRect();
+            pos = reactFlowInstance.screenToFlowPosition({
+              x: rect.left + rect.width / 2 + (Math.random() * 80 - 40),
+              y: rect.top + rect.height / 2 + (Math.random() * 80 - 40),
+            });
+          } catch {
+            pos = { x: 350 + Math.random() * 60, y: 180 + Math.random() * 60 };
+          }
+        } else {
+          pos = {
+            x: 350 + Math.random() * 80,
+            y: 180 + Math.random() * 80,
+          };
+        }
+      }
 
       const newId = `${compType}-${Date.now().toString().slice(-4)}`;
       const newNode: ArchitectureNode = {
@@ -825,7 +860,7 @@ function SimulatorContent() {
       );
       setSelectedNodeId(newId);
     },
-    [commitGraphChange]
+    [commitGraphChange, reactFlowInstance]
   );
 
   // Delete Component
@@ -1010,6 +1045,8 @@ function SimulatorContent() {
 
   // Drag & Drop Handlers
   const onDragStart = (event: React.DragEvent, compType: string) => {
+    event.dataTransfer.setData("application/reactflow", compType);
+    event.dataTransfer.setData("text/plain", compType);
     event.dataTransfer.setData("application/reactflow/type", compType);
     event.dataTransfer.effectAllowed = "move";
   };
@@ -1022,16 +1059,165 @@ function SimulatorContent() {
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
-      const compType = event.dataTransfer.getData("application/reactflow/type");
+      const compType =
+        event.dataTransfer.getData("application/reactflow") ||
+        event.dataTransfer.getData("text/plain") ||
+        event.dataTransfer.getData("application/reactflow/type");
       if (!compType) return;
 
-      const position = reactFlowInstance.screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
+      let position = { x: 350, y: 200 };
+      if (reactFlowInstance?.screenToFlowPosition) {
+        try {
+          const flowPos = reactFlowInstance.screenToFlowPosition({
+            x: event.clientX,
+            y: event.clientY,
+          });
+          if (
+            typeof flowPos.x === "number" &&
+            !isNaN(flowPos.x) &&
+            typeof flowPos.y === "number" &&
+            !isNaN(flowPos.y)
+          ) {
+            position = flowPos;
+          }
+        } catch (err) {
+          console.warn("Could not calculate flow position:", err);
+        }
+      } else if (reactFlowWrapper.current) {
+        const bounds = reactFlowWrapper.current.getBoundingClientRect();
+        position = {
+          x: event.clientX - bounds.left,
+          y: event.clientY - bounds.top,
+        };
+      }
+
       handleAddComponent(compType, position);
     },
     [reactFlowInstance, handleAddComponent]
+  );
+
+  // --------------------------------------------------------------------------
+  // AI ARCHITECT LOGIC & GRAPH MUTATIONS (PHASE 4)
+  // --------------------------------------------------------------------------
+  const handleFetchCritique = useCallback(async () => {
+    setIsAiLoading(true);
+    setAiError(null);
+    try {
+      const response = await fetchAIArchitectCritique(graphState, {
+        target_rps: graphState.metadata.targetRps,
+        problem_id: graphState.metadata.problemId,
+      });
+      setAiCritique(response);
+    } catch (err: any) {
+      console.error("AI Architect error:", err);
+      setAiError(err.message || "Failed to analyze architecture.");
+    } finally {
+      setIsAiLoading(false);
+    }
+  }, [graphState]);
+
+  const handleApplySuggestion = useCallback(
+    (suggestion: AIArchitectSuggestion) => {
+      const action = suggestion.action || "";
+      const parts = action.split(":");
+      const actionType = parts[0];
+
+      if (actionType === "add_component") {
+        const rawType = parts[1] || "redis";
+        let compType = rawType;
+        if (rawType === "cache") compType = "redis";
+        if (rawType === "queue") compType = "kafka";
+        if (rawType === "database") compType = "postgresql";
+        if (rawType === "service") compType = "server";
+
+        const nodeCount = graphState.nodes.length;
+        const targetPos = {
+          x: 420 + ((nodeCount * 55) % 280),
+          y: 130 + ((nodeCount * 40) % 220),
+        };
+        handleAddComponent(compType, targetPos);
+      } else if (actionType === "scale") {
+        const targetCategoryOrType = parts[1] || "service";
+        const replicaCount = parseInt(parts[2]) || 2;
+
+        const matchingNodes = graphState.nodes.filter(
+          (n) =>
+            n.id === targetCategoryOrType ||
+            n.type === targetCategoryOrType ||
+            n.category === targetCategoryOrType ||
+            (targetCategoryOrType === "database" &&
+              (n.category === "database" ||
+                n.type === "postgresql" ||
+                n.type === "mysql" ||
+                n.type === "cassandra" ||
+                n.type === "mongodb")) ||
+            (targetCategoryOrType === "service" &&
+              (n.category === "compute" || n.type === "server" || n.type === "microservice"))
+        );
+
+        if (matchingNodes.length > 0) {
+          commitGraphChange(
+            (prev) => ({
+              ...prev,
+              nodes: prev.nodes.map((n) =>
+                matchingNodes.some((mn) => mn.id === n.id)
+                  ? {
+                      ...n,
+                      config: {
+                        ...n.config,
+                        replicas: Math.max(replicaCount, (n.config.replicas || 1) + 1),
+                      },
+                    }
+                  : n
+              ),
+            }),
+            "UPDATE_CONFIGURATION",
+            `AI Architect Applied: Scaled ${targetCategoryOrType} replicas to ${replicaCount} (${suggestion.title})`,
+            { payload: { action, suggestionTitle: suggestion.title } }
+          );
+        } else {
+          commitGraphChange(
+            (prev) => ({
+              ...prev,
+              nodes: prev.nodes.map((n) =>
+                n.category === "compute" || n.category === "database"
+                  ? { ...n, config: { ...n.config, replicas: replicaCount } }
+                  : n
+              ),
+            }),
+            "UPDATE_CONFIGURATION",
+            `AI Architect Applied: Scaled replicas to ${replicaCount} (${suggestion.title})`,
+            { payload: { action } }
+          );
+        }
+      } else if (actionType === "connect") {
+        const sourceId = parts[1];
+        const targetId = parts[2];
+        if (sourceId && targetId) {
+          const edgeId = `e-${sourceId}-${targetId}-${Date.now().toString().slice(-3)}`;
+          commitGraphChange(
+            (prev) => ({
+              ...prev,
+              edges: [
+                ...prev.edges,
+                {
+                  id: edgeId,
+                  source: sourceId,
+                  target: targetId,
+                  connectionType: "sync",
+                },
+              ],
+            }),
+            "CONNECT_COMPONENTS",
+            `AI Architect Applied: Connected '${sourceId}' → '${targetId}'`,
+            { edgeId }
+          );
+        }
+      }
+
+      setAppliedSuggestions((prev) => new Set(prev).add(suggestion.title));
+    },
+    [graphState.nodes, handleAddComponent, commitGraphChange]
   );
 
   // Node Drag on Canvas
@@ -1251,9 +1437,41 @@ function SimulatorContent() {
             </button>
           </div>
 
+          {/* AI System Architect Drawer Toggle Button (Phase 4) */}
+          <button
+            onClick={() => {
+              const next = !showAiDrawer;
+              setShowAiDrawer(next);
+              if (next) setShowValidationDrawer(false);
+              if (next && !aiCritique && !isAiLoading) {
+                handleFetchCritique();
+              }
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-mono font-bold transition shadow-sm ${
+              showAiDrawer
+                ? "border-cyan-400 bg-cyan-500/20 text-cyan-300 ring-1 ring-cyan-400/50 shadow-[0_0_15px_rgba(6,182,212,0.25)]"
+                : "border-cyan-500/40 bg-cyan-950/40 text-cyan-300 hover:bg-cyan-900/40 hover:border-cyan-400/60"
+            }`}
+            title="Consult AI System Architect for Live Topology Critique & Actionable Advice"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+            <span>AI Architect</span>
+            {isAiLoading ? (
+              <RefreshCw className="w-2.5 h-2.5 text-cyan-400 animate-spin" />
+            ) : (
+              <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                Live
+              </span>
+            )}
+          </button>
+
           {/* Rules & Invariants Drawer Toggle Button */}
           <button
-            onClick={() => setShowValidationDrawer(!showValidationDrawer)}
+            onClick={() => {
+              const next = !showValidationDrawer;
+              setShowValidationDrawer(next);
+              if (next) setShowAiDrawer(false);
+            }}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-mono transition ${
               showValidationDrawer
                 ? "border-cyan-500/50 bg-cyan-500/15 text-cyan-300"
@@ -1361,9 +1579,10 @@ function SimulatorContent() {
                   key={comp.type}
                   draggable
                   onDragStart={(e) => onDragStart(e, comp.type)}
+                  onClick={() => handleAddComponent(comp.type)}
                   className={`group p-2.5 rounded-xl border ${comp.borderClass} bg-slate-950/60 hover:bg-slate-900/90 transition-all cursor-grab active:cursor-grabbing shadow-sm flex items-center justify-between select-none`}
                 >
-                  <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex items-center gap-2.5 min-w-0 pointer-events-none">
                     <div
                       className={`p-1.5 rounded-lg border ${comp.borderClass} ${comp.bgClass} ${comp.textClass} shrink-0 group-hover:scale-105 transition-transform`}
                     >
@@ -1385,7 +1604,10 @@ function SimulatorContent() {
                   </div>
 
                   <button
-                    onClick={() => handleAddComponent(comp.type)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAddComponent(comp.type);
+                    }}
                     title="Click to add component to canvas"
                     className="p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-cyan-500/20 text-cyan-400 transition"
                   >
@@ -1417,6 +1639,9 @@ function SimulatorContent() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            onDragOver={onDragOver}
+            onDrop={onDrop}
+            proOptions={{ hideAttribution: true }}
             onNodeClick={(_e, node) => {
               setSelectedNodeId(node.id);
               setSelectedEdgeId(null);
@@ -2289,6 +2514,281 @@ function SimulatorContent() {
                 ))}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* 5. AI SYSTEM ARCHITECT DRAWER (PHASE 4)                              */}
+      {/* ==================================================================== */}
+      {showAiDrawer && (
+        <div className="fixed inset-y-0 right-0 w-full sm:w-[520px] bg-[#070d1a]/98 backdrop-blur-2xl border-l border-cyan-500/20 shadow-2xl z-50 flex flex-col animate-in slide-in-from-right duration-200">
+          {/* Drawer Header */}
+          <div className="p-4 border-b border-white/[0.08] flex items-center justify-between bg-slate-900/80">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-lg bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                <Sparkles className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-mono font-bold text-white uppercase tracking-wider">
+                    AI System Architect
+                  </h3>
+                  <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-mono">
+                    {aiCritique?.provider ? aiCritique.provider.toUpperCase() : "LIVE ADVISOR"}
+                  </span>
+                </div>
+                <p className="text-[10px] font-mono text-slate-400">
+                  Principal Architecture Feedback & Socratic Evaluation
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={handleFetchCritique}
+                disabled={isAiLoading}
+                className="p-1.5 rounded-lg text-cyan-400 hover:text-white hover:bg-cyan-500/20 border border-cyan-500/30 transition disabled:opacity-50"
+                title="Re-Analyze Live Architecture"
+              >
+                <RefreshCw className={`w-4 h-4 ${isAiLoading ? "animate-spin" : ""}`} />
+              </button>
+              <button
+                onClick={() => setShowAiDrawer(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-xs">
+            {/* Loading State */}
+            {isAiLoading && (
+              <div className="p-6 rounded-2xl border border-cyan-500/30 bg-cyan-950/20 space-y-4 text-center">
+                <div className="relative w-12 h-12 mx-auto">
+                  <div className="absolute inset-0 rounded-full border-2 border-cyan-500/20 animate-ping" />
+                  <div className="w-12 h-12 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin flex items-center justify-center">
+                    <Brain className="w-6 h-6 text-cyan-400 animate-pulse" />
+                  </div>
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-cyan-200">
+                    Architect Observing Graph Topology...
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-1 max-w-[340px] mx-auto leading-relaxed font-light">
+                    Evaluating tier decoupling, single points of failure, cache hit ratios, and CAP invariants for {graphState.metadata.targetRps}.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Error Message */}
+            {aiError && (
+              <div className="p-3.5 rounded-xl border border-red-500/40 bg-red-500/10 text-red-300 space-y-1">
+                <div className="flex items-center gap-1.5 font-bold text-xs">
+                  <AlertCircle className="w-4 h-4 text-red-400" />
+                  <span>Critique Engine Notice</span>
+                </div>
+                <p className="text-[11px] text-slate-300 font-light">{aiError}</p>
+                <button
+                  onClick={handleFetchCritique}
+                  className="mt-2 px-2.5 py-1 rounded bg-red-950 text-red-300 border border-red-800 text-[10px] font-bold hover:bg-red-900 transition"
+                >
+                  Retry Analysis
+                </button>
+              </div>
+            )}
+
+            {/* Critique & Suggestions Content */}
+            {!isAiLoading && aiCritique && (
+              <>
+                {/* 1. Critique Assessment Hero Card */}
+                <div className="p-4 rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-[#081226] via-slate-900/90 to-[#120f28] shadow-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1 rounded-md bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                        <Brain className="w-4 h-4" />
+                      </div>
+                      <span className="text-[10px] font-bold text-cyan-300 uppercase tracking-wider">
+                        Topology Assessment
+                      </span>
+                    </div>
+
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                      {aiCritique.estimated_monthly_cost || `$${validationResponse.estimated_monthly_cost.toLocaleString()}/mo`}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-200 leading-relaxed font-light pl-0.5">
+                    {aiCritique.critique}
+                  </p>
+                </div>
+
+                {/* 2. Socratic Interview Challenge Card */}
+                {aiCritique.interview_question && (
+                  <div className="p-4 rounded-2xl border border-purple-500/30 bg-purple-950/20 space-y-3 shadow-lg">
+                    <div className="flex items-center gap-2 text-purple-300">
+                      <HelpCircle className="w-4 h-4 text-purple-400 shrink-0" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider">
+                        Socratic Architect Challenge
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-200 leading-relaxed font-light italic bg-slate-950/60 p-3 rounded-xl border border-purple-500/20">
+                      "{aiCritique.interview_question}"
+                    </p>
+
+                    <div className="space-y-2 pt-1">
+                      <textarea
+                        value={userInterviewAnswer}
+                        onChange={(e) => {
+                          setUserInterviewAnswer(e.target.value);
+                          if (interviewSubmitted) setInterviewSubmitted(false);
+                        }}
+                        placeholder="Draft your architectural defense or reasoning here (e.g. partition keys, leader election, DLQ backoff)..."
+                        rows={3}
+                        className="w-full bg-slate-950/90 border border-white/[0.08] focus:border-purple-500/50 rounded-xl p-2.5 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none resize-none"
+                      />
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-slate-500">
+                          Interactive Interview Practice
+                        </span>
+                        <button
+                          onClick={() => {
+                            if (userInterviewAnswer.trim().length > 0) {
+                              setInterviewSubmitted(true);
+                            }
+                          }}
+                          disabled={userInterviewAnswer.trim().length === 0}
+                          className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px] transition flex items-center gap-1.5 disabled:opacity-40"
+                        >
+                          <Send className="w-3 h-3" />
+                          <span>Submit Reasoning</span>
+                        </button>
+                      </div>
+
+                      {interviewSubmitted && (
+                        <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-[11px] flex items-start gap-2 animate-in fade-in">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-bold">Reasoning Acknowledged: </span>
+                            <span className="text-slate-300 font-light">
+                              Solid systems articulation. Demonstrates awareness of distributed consensus, split-brain mitigation, and failure domains.
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Actionable Suggestions with Apply Button */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Wrench className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Actionable Architectural Recommendations ({aiCritique.suggestions.length})</span>
+                    </span>
+                  </div>
+
+                  {aiCritique.suggestions.map((suggestion, idx) => {
+                    const isApplied = appliedSuggestions.has(suggestion.title);
+                    const categoryColors = {
+                      architecture: "border-purple-500/40 bg-purple-500/10 text-purple-300",
+                      scalability: "border-cyan-500/40 bg-cyan-500/10 text-cyan-300",
+                      reliability: "border-amber-500/40 bg-amber-500/10 text-amber-300",
+                      cost: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
+                    }[suggestion.category] || "border-cyan-500/40 bg-cyan-500/10 text-cyan-300";
+
+                    return (
+                      <div
+                        key={idx}
+                        className={`p-3.5 rounded-2xl border transition-all duration-200 flex flex-col gap-2.5 ${
+                          isApplied
+                            ? "border-emerald-500/30 bg-emerald-950/10"
+                            : "border-white/[0.08] bg-slate-950/70 hover:border-cyan-500/30"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wider border ${categoryColors}`}
+                            >
+                              {suggestion.category}
+                            </span>
+                            <span className="text-xs font-bold text-white tracking-wide">
+                              {suggestion.title}
+                            </span>
+                          </div>
+
+                          {isApplied && (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                              <Check className="w-3 h-3 text-emerald-400" />
+                              <span>Applied</span>
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-[11px] text-slate-300 font-light leading-relaxed">
+                          {suggestion.description}
+                        </p>
+
+                        <div className="flex items-center justify-between pt-1 border-t border-white/[0.06]">
+                          <span className="text-[10px] font-mono text-slate-500 truncate max-w-[240px]">
+                            Action: {suggestion.action}
+                          </span>
+
+                          <button
+                            onClick={() => handleApplySuggestion(suggestion)}
+                            disabled={isApplied}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold font-mono transition flex items-center gap-1.5 shadow-sm ${
+                              isApplied
+                                ? "bg-emerald-950/60 border border-emerald-500/30 text-emerald-400 cursor-default"
+                                : "bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-200 hover:text-white"
+                            }`}
+                          >
+                            {isApplied ? (
+                              <>
+                                <Check className="w-3 h-3 text-emerald-400" />
+                                <span>Applied to Canvas</span>
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="w-3 h-3 text-cyan-400" />
+                                <span>Apply to Canvas</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            {/* Empty State when drawer opened but not loaded */}
+            {!isAiLoading && !aiCritique && !aiError && (
+              <div className="p-8 rounded-2xl border border-white/[0.06] bg-slate-950/60 text-center space-y-3">
+                <div className="w-12 h-12 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center mx-auto">
+                  <Sparkles className="w-6 h-6" />
+                </div>
+                <h4 className="text-xs font-bold text-slate-200">
+                  Ready to Analyze Architecture
+                </h4>
+                <p className="text-[11px] text-slate-400 max-w-[300px] mx-auto font-light leading-relaxed">
+                  Request feedback from the AI System Architect on component scaling, fault tolerance, and trade-offs.
+                </p>
+                <button
+                  onClick={handleFetchCritique}
+                  className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition shadow-lg shadow-cyan-500/20"
+                >
+                  Analyze Current Architecture
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

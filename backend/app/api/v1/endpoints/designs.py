@@ -6,6 +6,7 @@ from backend.app.core.database import get_db
 from backend.app.models.design import Design, DesignEvaluation, DesignVersion
 from backend.app.models.user import User
 from backend.app.schemas.design import (
+    AIArchitectCritiqueResponse,
     DesignCreate,
     DesignDetail,
     DesignSummary,
@@ -29,6 +30,69 @@ async def validate_architecture_graph(
     """Standalone deterministic rule validation of an architecture graph."""
     scale_meta = getattr(payload, "scale_metadata", {}) or {}
     return rule_engine.evaluate(payload, scale_metadata=scale_meta)
+
+
+@router.post("/critique", response_model=AIArchitectCritiqueResponse)
+async def critique_architecture_graph(
+    payload: GraphData,
+) -> AIArchitectCritiqueResponse:
+    """
+    AI System Architect evaluates canvas architecture in real-time.
+    Provides critique, actionable suggestions, Socratic interview question, and estimated cost.
+    Uses LLM with deterministic first-principles fallback.
+    """
+    import json
+    import logging
+    logger = logging.getLogger("designkaro.llm.critique")
+    scale_meta = getattr(payload, "scale_metadata", {}) or {}
+
+    try:
+        from backend.app.services.llm.models import ChatMessage, LLMRequest
+        from backend.app.services.llm.prompts.architect import (
+            ARCHITECT_SYSTEM_PROMPT,
+            format_architect_prompt,
+            generate_deterministic_architect_fallback,
+        )
+        from backend.app.services.llm.service import LLMService
+
+        llm_service = LLMService()
+        user_prompt = format_architect_prompt(payload, scale_meta)
+        req = LLMRequest(
+            messages=[
+                ChatMessage(role="system", content=ARCHITECT_SYSTEM_PROMPT),
+                ChatMessage(role="user", content=user_prompt),
+            ],
+            temperature=0.2,
+            max_tokens=800,
+        )
+
+        res = await llm_service.generate(
+            request=req,
+            fallback_fn=lambda: generate_deterministic_architect_fallback(payload, scale_meta).model_dump_json(),
+        )
+
+        raw = res.content.strip()
+        if raw.startswith("```json"):
+            raw = raw[7:]
+        if raw.startswith("```"):
+            raw = raw[3:]
+        if raw.endswith("```"):
+            raw = raw[:-3]
+        raw = raw.strip()
+
+        data = json.loads(raw)
+        return AIArchitectCritiqueResponse(
+            critique=data.get("critique", "Architecture topology analyzed."),
+            suggestions=data.get("suggestions", []),
+            interview_question=data.get("interview_question", "How does this system scale under peak traffic?"),
+            estimated_monthly_cost=data.get("estimated_monthly_cost", "$500 - $800/mo"),
+            provider=res.provider or "ai-architect",
+            fallback_used=res.fallback_used,
+        )
+    except Exception as exc:
+        logger.warning("Falling back to deterministic architect response: %s", exc)
+        from backend.app.services.llm.prompts.architect import generate_deterministic_architect_fallback
+        return generate_deterministic_architect_fallback(payload, scale_meta)
 
 
 @router.get("", response_model=list[DesignSummary])

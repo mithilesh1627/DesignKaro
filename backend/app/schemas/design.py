@@ -104,3 +104,20 @@ class ValidationResponse(BaseModel):
     component_counts: dict[str, int]
     estimated_monthly_cost: float = 0.0
     cost_breakdown: dict[str, float] = Field(default_factory=dict)
+
+
+class AIArchitectSuggestion(BaseModel):
+    category: str  # "architecture" | "scalability" | "reliability" | "cost"
+    title: str
+    description: str
+    action: str  # e.g. "add_component:cache", "scale:service:3", "connect:service:cache"
+
+
+class AIArchitectCritiqueResponse(BaseModel):
+    critique: str
+    suggestions: list[AIArchitectSuggestion] = Field(default_factory=list)
+    interview_question: str
+    estimated_monthly_cost: str
+    provider: str = "ai-architect"
+    fallback_used: bool = False
+

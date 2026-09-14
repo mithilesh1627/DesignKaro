@@ -129,3 +129,20 @@ export interface ValidationResponse {
   cost_breakdown: Record<string, number>;
 }
 
+export interface AIArchitectSuggestion {
+  category: "architecture" | "scalability" | "reliability" | "cost";
+  title: string;
+  description: string;
+  action: string;
+}
+
+export interface AIArchitectCritiqueResponse {
+  critique: string;
+  suggestions: AIArchitectSuggestion[];
+  interview_question: string;
+  estimated_monthly_cost: string;
+  provider: string;
+  fallback_used: boolean;
+}
+
+
