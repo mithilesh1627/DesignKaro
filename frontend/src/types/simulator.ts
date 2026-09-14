@@ -104,3 +104,28 @@ export interface GraphValidationReport {
   issues: GraphValidationIssue[];
   summary: string;
 }
+
+export type RuleCategory = "topology" | "capacity" | "resilience" | "consistency" | "cost";
+export type RuleSeverity = "critical" | "warning" | "info";
+
+export interface RuleViolation {
+  rule_id: string;
+  rule_name: string;
+  category: RuleCategory;
+  severity: RuleSeverity;
+  node_ids: string[];
+  message: string;
+  remediation: string;
+}
+
+export interface ValidationResponse {
+  health_score: number;
+  status: "PASS" | "NEEDS_IMPROVEMENT" | "CRITICAL_ISSUES";
+  violations: RuleViolation[];
+  passed_rules: string[];
+  summary: string;
+  component_counts: Record<string, number>;
+  estimated_monthly_cost: number;
+  cost_breakdown: Record<string, number>;
+}
+

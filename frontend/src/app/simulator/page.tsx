@@ -52,6 +52,11 @@ import {
   FileCode,
   Share2,
   Workflow,
+  AlertCircle,
+  DollarSign,
+  Wrench,
+  ExternalLink,
+  Target,
 } from "lucide-react";
 import {
   ArchitectureComponentCategory,
@@ -63,11 +68,17 @@ import {
   ConnectionType,
   GraphValidationReport,
   ProtocolType,
+  RuleViolation,
+  RuleSeverity,
+  RuleCategory,
+  ValidationResponse,
 } from "@/types/simulator";
 import {
   createArchitectureEvent,
   getEdgeVisualProps,
   validateArchitectureGraph,
+  evaluateArchitectureRules,
+  validateGraphOnBackend,
 } from "@/lib/architectureGraph";
 
 // ============================================================================
@@ -377,6 +388,8 @@ const CATEGORY_LABELS = [
 interface CustomFlowData extends Record<string, unknown> {
   archNode: ArchitectureNode;
   isSelected?: boolean;
+  violationSeverity?: RuleSeverity | null;
+  violations?: RuleViolation[];
 }
 
 const SimulatorCustomNode = ({ data }: { data: CustomFlowData }) => {
@@ -385,15 +398,41 @@ const SimulatorCustomNode = ({ data }: { data: CustomFlowData }) => {
     COMPONENT_CATALOG.find((c) => c.type === node.type) || COMPONENT_CATALOG[0];
   const Icon = comp.icon;
   const replicas = node.config.replicas || 1;
+  const severity = data.violationSeverity;
+
+  let borderStyle = `${comp.borderClass} hover:border-cyan-500/60`;
+  if (data.isSelected) {
+    borderStyle = "border-cyan-400 ring-2 ring-cyan-500/40 shadow-[0_0_20px_rgba(6,182,212,0.25)]";
+  } else if (severity === "critical") {
+    borderStyle = "border-red-500 ring-2 ring-red-500/70 shadow-[0_0_22px_rgba(239,68,68,0.55)] animate-pulse";
+  } else if (severity === "warning") {
+    borderStyle = "border-amber-400 ring-1 ring-amber-400/50 shadow-[0_0_16px_rgba(251,191,36,0.35)]";
+  }
 
   return (
     <div
-      className={`relative px-4 py-3 rounded-xl border bg-[#091122]/95 backdrop-blur-xl shadow-2xl min-w-[180px] transition-all duration-200 cursor-pointer ${
-        data.isSelected
-          ? "border-cyan-400 ring-2 ring-cyan-500/40 shadow-[0_0_20px_rgba(6,182,212,0.25)]"
-          : `${comp.borderClass} hover:border-cyan-500/60`
-      }`}
+      className={`relative px-4 py-3 rounded-xl border bg-[#091122]/95 backdrop-blur-xl shadow-2xl min-w-[185px] transition-all duration-200 cursor-pointer ${borderStyle}`}
     >
+      {/* Violation Severity Badge */}
+      {severity === "critical" && (
+        <div
+          className="absolute -top-3 -right-2 px-2 py-0.5 rounded-full bg-red-950/95 border border-red-500 text-[9px] font-bold text-red-300 flex items-center gap-1 shadow-lg shadow-red-950/60 z-20"
+          title={data.violations?.map((v) => `[${v.rule_name}] ${v.message}`).join("\n")}
+        >
+          <AlertTriangle className="w-2.5 h-2.5 text-red-400 animate-pulse" />
+          <span>Critical ({data.violations?.length || 1})</span>
+        </div>
+      )}
+      {severity === "warning" && (
+        <div
+          className="absolute -top-3 -right-2 px-2 py-0.5 rounded-full bg-amber-950/95 border border-amber-500 text-[9px] font-bold text-amber-300 flex items-center gap-1 shadow-lg shadow-amber-950/60 z-20"
+          title={data.violations?.map((v) => `[${v.rule_name}] ${v.message}`).join("\n")}
+        >
+          <AlertCircle className="w-2.5 h-2.5 text-amber-400" />
+          <span>Warning ({data.violations?.length || 1})</span>
+        </div>
+      )}
+
       {/* Ingress Target Handle */}
       <Handle
         type="target"
@@ -417,7 +456,7 @@ const SimulatorCustomNode = ({ data }: { data: CustomFlowData }) => {
             </span>
           </div>
           <div className="text-[10px] font-mono text-slate-400 flex items-center gap-1.5 mt-0.5">
-            <span className="text-cyan-400 font-semibold">
+            <span className={replicas > 1 ? "text-cyan-400 font-semibold" : "text-slate-400"}>
               {replicas > 1 ? `${replicas}x Replicas` : "1 Instance"}
             </span>
             <span>•</span>
@@ -539,6 +578,11 @@ function SimulatorContent() {
   const [showEventLog, setShowEventLog] = useState<boolean>(false);
   const [showValidationDrawer, setShowValidationDrawer] = useState<boolean>(false);
 
+  // Validation Filters
+  const [valSeverityFilter, setValSeverityFilter] = useState<"all" | "critical" | "warning" | "info">("all");
+  const [valCategoryFilter, setValCategoryFilter] = useState<"all" | RuleCategory>("all");
+  const [valSearchQuery, setValSearchQuery] = useState<string>("");
+
   // Component Search & Filter
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchFilter, setSearchFilter] = useState<string>("");
@@ -559,23 +603,49 @@ function SimulatorContent() {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   }, [secondsRemaining]);
 
-  // Deterministic Graph Validation
-  const validationReport: GraphValidationReport = useMemo(() => {
-    return validateArchitectureGraph(graphState);
+  // Deterministic Graph Rule Engine Evaluation (Instant 0ms Latency)
+  const validationResponse: ValidationResponse = useMemo(() => {
+    return evaluateArchitectureRules(graphState);
   }, [graphState]);
+
+  // Node violation map for fast canvas node styling
+  const nodeViolationMap = useMemo(() => {
+    const map = new Map<string, { severity: RuleSeverity; violations: RuleViolation[] }>();
+    validationResponse.violations.forEach((v) => {
+      v.node_ids.forEach((nodeId) => {
+        const existing = map.get(nodeId);
+        if (!existing) {
+          map.set(nodeId, { severity: v.severity, violations: [v] });
+        } else {
+          existing.violations.push(v);
+          if (v.severity === "critical") {
+            existing.severity = "critical";
+          } else if (v.severity === "warning" && existing.severity !== "critical") {
+            existing.severity = "warning";
+          }
+        }
+      });
+    });
+    return map;
+  }, [validationResponse]);
 
   // Convert Architecture Graph to ReactFlow Nodes & Edges
   const flowNodes: Node<CustomFlowData>[] = useMemo(() => {
-    return graphState.nodes.map((n) => ({
-      id: n.id,
-      type: "simulatorCustomNode",
-      position: n.position,
-      data: {
-        archNode: n,
-        isSelected: n.id === selectedNodeId,
-      },
-    }));
-  }, [graphState.nodes, selectedNodeId]);
+    return graphState.nodes.map((n) => {
+      const vInfo = nodeViolationMap.get(n.id);
+      return {
+        id: n.id,
+        type: "simulatorCustomNode",
+        position: n.position,
+        data: {
+          archNode: n,
+          isSelected: n.id === selectedNodeId,
+          violationSeverity: vInfo?.severity || null,
+          violations: vInfo?.violations || [],
+        },
+      };
+    });
+  }, [graphState.nodes, selectedNodeId, nodeViolationMap]);
 
   const flowEdges: Edge[] = useMemo(() => {
     return graphState.edges.map((e) => {
@@ -809,6 +879,75 @@ function SimulatorContent() {
     setSelectedNodeId(newId);
   }, [selectedNodeId, graphState.nodes, commitGraphChange]);
 
+  // Center / Pan Canvas to an affected Node
+  const handleFocusNode = useCallback(
+    (nodeId: string) => {
+      const target = graphState.nodes.find((n) => n.id === nodeId);
+      if (target && reactFlowInstance) {
+        setSelectedNodeId(nodeId);
+        reactFlowInstance.setCenter(target.position.x + 90, target.position.y + 40, {
+          zoom: 1.1,
+          duration: 500,
+        });
+      }
+    },
+    [graphState.nodes, reactFlowInstance]
+  );
+
+  // Quick Fix rule violations
+  const handleApplyQuickFix = useCallback(
+    (violation: RuleViolation) => {
+      if (violation.rule_id === "RULE-001") {
+        // DB SPOF -> scale replicas to 2
+        if (violation.node_ids.length > 0) {
+          commitGraphChange(
+            (prev) => ({
+              ...prev,
+              nodes: prev.nodes.map((n) =>
+                violation.node_ids.includes(n.id)
+                  ? { ...n, config: { ...n.config, replicas: Math.max(2, (n.config.replicas || 1) + 1) } }
+                  : n
+              ),
+            }),
+            "UPDATE_CONFIGURATION",
+            `Auto-remediated ${violation.rule_name}: Scaled database replicas to 2 for High Availability`,
+            { nodeId: violation.node_ids[0], payload: { nodeIds: violation.node_ids } }
+          );
+        }
+      } else if (violation.rule_id === "RULE-017") {
+        // Service SPOF -> scale replicas to 2
+        if (violation.node_ids.length > 0) {
+          commitGraphChange(
+            (prev) => ({
+              ...prev,
+              nodes: prev.nodes.map((n) =>
+                violation.node_ids.includes(n.id)
+                  ? { ...n, config: { ...n.config, replicas: Math.max(2, (n.config.replicas || 1) + 1) } }
+                  : n
+              ),
+            }),
+            "UPDATE_CONFIGURATION",
+            `Auto-remediated ${violation.rule_name}: Scaled compute service replicas to 2`,
+            { nodeId: violation.node_ids[0], payload: { nodeIds: violation.node_ids } }
+          );
+        }
+      } else if (violation.rule_id === "RULE-002") {
+        // Add API Gateway
+        handleAddComponent("api_gateway", { x: 260, y: 180 });
+      } else if (violation.rule_id === "RULE-003") {
+        // Add Redis Cache
+        handleAddComponent("redis", { x: 560, y: 110 });
+      } else if (violation.rule_id === "RULE-006") {
+        // Add CDN
+        handleAddComponent("cdn", { x: 200, y: 120 });
+      } else if (violation.rule_id === "RULE-012") {
+        // Add Kafka Queue
+        handleAddComponent("kafka", { x: 520, y: 260 });
+      }
+    },
+    [commitGraphChange, handleAddComponent]
+  );
+
   // Connect Components
   const onConnect = useCallback(
     (params: Connection) => {
@@ -941,6 +1080,33 @@ function SimulatorContent() {
     [graphState.edges, selectedEdgeId]
   );
 
+  // Filtered Violations & Counters
+  const criticalCount = useMemo(
+    () => validationResponse.violations.filter((v) => v.severity === "critical").length,
+    [validationResponse.violations]
+  );
+  const warningCount = useMemo(
+    () => validationResponse.violations.filter((v) => v.severity === "warning").length,
+    [validationResponse.violations]
+  );
+  const infoCount = useMemo(
+    () => validationResponse.violations.filter((v) => v.severity === "info").length,
+    [validationResponse.violations]
+  );
+
+  const filteredViolations = useMemo(() => {
+    return validationResponse.violations.filter((v) => {
+      const matchSeverity = valSeverityFilter === "all" || v.severity === valSeverityFilter;
+      const matchCategory = valCategoryFilter === "all" || v.category === valCategoryFilter;
+      const matchSearch =
+        !valSearchQuery ||
+        v.rule_id.toLowerCase().includes(valSearchQuery.toLowerCase()) ||
+        v.rule_name.toLowerCase().includes(valSearchQuery.toLowerCase()) ||
+        v.message.toLowerCase().includes(valSearchQuery.toLowerCase());
+      return matchSeverity && matchCategory && matchSearch;
+    });
+  }, [validationResponse.violations, valSeverityFilter, valCategoryFilter, valSearchQuery]);
+
   return (
     <div className="flex flex-col h-screen w-full overflow-hidden bg-[#050914] text-slate-200">
       {/* ==================================================================== */}
@@ -973,25 +1139,41 @@ function SimulatorContent() {
             <span className="font-bold text-cyan-300">{graphState.metadata.title}</span>
           </div>
 
-          {/* Graph Status Pill with Live Validation Health */}
+          {/* Graph Status Pill with Live Deterministic Health Score */}
           <button
             onClick={() => setShowValidationDrawer(true)}
             className={`hidden md:flex items-center gap-2 px-2.5 py-1 rounded-lg border text-xs font-mono transition ${
-              validationReport.isValid
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
-                : "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
+              validationResponse.status === "PASS"
+                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
+                : validationResponse.status === "NEEDS_IMPROVEMENT"
+                ? "border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
+                : "border-red-500/40 bg-red-500/15 text-red-300 hover:bg-red-500/25 animate-pulse"
             }`}
-            title="Inspect Real-time Topology Validation"
+            title="Inspect Deterministic Rule Engine Violations & Invariants"
           >
-            {validationReport.isValid ? (
+            {validationResponse.status === "PASS" ? (
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+            ) : validationResponse.status === "NEEDS_IMPROVEMENT" ? (
+              <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
             ) : (
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+              <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
             )}
-            <span>Score: {validationReport.score}%</span>
+            <span className="font-bold">{validationResponse.health_score}%</span>
             <span className="text-[10px] text-slate-400">
-              (v{graphState.metadata.version})
+              {validationResponse.violations.length === 0
+                ? "Clean"
+                : `${validationResponse.violations.length} Issues`}
             </span>
+          </button>
+
+          {/* Monthly Cost Badge */}
+          <button
+            onClick={() => setShowValidationDrawer(true)}
+            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.05] text-xs font-mono text-slate-300 transition"
+            title="Estimated Monthly Cloud Infrastructure Cost"
+          >
+            <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+            <span>${validationResponse.estimated_monthly_cost.toLocaleString()}/mo</span>
           </button>
         </div>
 
@@ -1068,6 +1250,39 @@ function SimulatorContent() {
               <RotateCw className="w-3.5 h-3.5" />
             </button>
           </div>
+
+          {/* Rules & Invariants Drawer Toggle Button */}
+          <button
+            onClick={() => setShowValidationDrawer(!showValidationDrawer)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-mono transition ${
+              showValidationDrawer
+                ? "border-cyan-500/50 bg-cyan-500/15 text-cyan-300"
+                : validationResponse.violations.some((v) => v.severity === "critical")
+                ? "border-red-500/50 bg-red-500/10 text-red-300 hover:bg-red-500/20"
+                : validationResponse.violations.length > 0
+                ? "border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
+                : "border-white/[0.08] bg-white/[0.02] text-slate-300 hover:bg-white/[0.06]"
+            }`}
+            title="Toggle Deterministic Rule Violations & Architectural Invariants"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="hidden sm:inline">Rules</span>
+            {validationResponse.violations.length > 0 ? (
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                  validationResponse.violations.some((v) => v.severity === "critical")
+                    ? "bg-red-500 text-white"
+                    : "bg-amber-500 text-slate-950"
+                }`}
+              >
+                {validationResponse.violations.length}
+              </span>
+            ) : (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                0
+              </span>
+            )}
+          </button>
 
           {/* Event Stream & Graph Inspector Button */}
           <button
@@ -1367,6 +1582,30 @@ function SimulatorContent() {
                     className="w-full bg-slate-950 border border-white/[0.08] focus:border-cyan-500/50 rounded-lg px-3 py-1.5 text-white focus:outline-none"
                   />
                 </div>
+
+                {/* Node Active Invariant Violations */}
+                {nodeViolationMap.has(activeNode.id) && (
+                  <div className="p-3 rounded-xl border border-red-500/40 bg-red-500/10 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-red-300">
+                        <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 animate-pulse" />
+                        <span>Active Invariant Issues</span>
+                      </div>
+                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-red-950 text-red-300 border border-red-800/60">
+                        {nodeViolationMap.get(activeNode.id)?.violations.length} Active
+                      </span>
+                    </div>
+                    {nodeViolationMap.get(activeNode.id)?.violations.map((v) => (
+                      <div key={v.rule_id} className="text-[10px] space-y-1 pt-1.5 border-t border-red-500/20">
+                        <div className="font-bold text-red-200">{v.rule_name}</div>
+                        <div className="text-slate-300 font-light leading-relaxed">{v.message}</div>
+                        <div className="text-cyan-400 font-medium">
+                          Fix: <span className="text-slate-200">{v.remediation}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Replicas Slider */}
                 <div className="space-y-1.5">
@@ -1706,21 +1945,22 @@ function SimulatorContent() {
       )}
 
       {/* ==================================================================== */}
-      {/* 4. REAL-TIME GRAPH VALIDATION DRAWER                                 */}
+      {/* 4. DETERMINISTIC RULE ENGINE & INVARIANTS DRAWER                     */}
       {/* ==================================================================== */}
       {showValidationDrawer && (
-        <div className="fixed inset-y-0 right-0 w-full sm:w-[460px] bg-[#070d1a]/98 backdrop-blur-2xl border-l border-white/[0.1] shadow-2xl z-50 flex flex-col animate-in slide-in-from-right duration-200">
-          <div className="p-4 border-b border-white/[0.08] flex items-center justify-between bg-slate-900/60">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                <ShieldCheck className="w-4 h-4" />
+        <div className="fixed inset-y-0 right-0 w-full sm:w-[500px] bg-[#070d1a]/98 backdrop-blur-2xl border-l border-white/[0.1] shadow-2xl z-50 flex flex-col animate-in slide-in-from-right duration-200">
+          {/* Drawer Header */}
+          <div className="p-4 border-b border-white/[0.08] flex items-center justify-between bg-slate-900/70">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-lg bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                <ShieldCheck className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="text-xs font-mono font-bold text-white uppercase tracking-wider">
-                  Topology Validation Report
+                  Deterministic Rule Engine
                 </h3>
                 <p className="text-[10px] font-mono text-slate-400">
-                  Deterministic Graph Invariants • First Principles
+                  Zero Latency • First-Principles Invariant Analysis
                 </p>
               </div>
             </div>
@@ -1733,58 +1973,321 @@ function SimulatorContent() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-xs">
-            {/* Health Score Summary Card */}
-            <div className="p-4 rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 to-transparent">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] text-slate-400 uppercase tracking-wider">
-                  TOPOLOGY HEALTH SCORE
-                </span>
-                <span className="text-2xl font-black font-mono text-cyan-300">
-                  {validationReport.score}%
-                </span>
+            {/* Health Score & Cost Hero Card */}
+            <div className="p-4 rounded-2xl border border-white/[0.08] bg-gradient-to-br from-slate-900/80 to-[#091224]/80 shadow-lg space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                    SYSTEM HEALTH SCORE
+                  </div>
+                  <div className="flex items-baseline gap-2 mt-0.5">
+                    <span className="text-3xl font-black font-mono text-white">
+                      {validationResponse.health_score}
+                    </span>
+                    <span className="text-xs text-slate-400">/ 100</span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-end gap-1">
+                  <span
+                    className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase border ${
+                      validationResponse.status === "PASS"
+                        ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                        : validationResponse.status === "NEEDS_IMPROVEMENT"
+                        ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                        : "bg-red-500/20 text-red-300 border-red-500/40 animate-pulse"
+                    }`}
+                  >
+                    {validationResponse.status.replace(/_/g, " ")}
+                  </span>
+                  <div className="text-[11px] text-emerald-400 font-bold flex items-center gap-1">
+                    <DollarSign className="w-3.5 h-3.5" />
+                    <span>${validationResponse.estimated_monthly_cost.toLocaleString()}/mo</span>
+                  </div>
+                </div>
               </div>
-              <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden border border-white/[0.06]">
+
+              {/* Progress Bar */}
+              <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-white/[0.06]">
                 <div
-                  className="bg-gradient-to-r from-cyan-500 to-sky-400 h-full rounded-full transition-all duration-500"
-                  style={{ width: `${validationReport.score}%` }}
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    validationResponse.health_score >= 85
+                      ? "bg-gradient-to-r from-emerald-500 to-cyan-400"
+                      : validationResponse.health_score >= 60
+                      ? "bg-gradient-to-r from-amber-500 to-yellow-400"
+                      : "bg-gradient-to-r from-red-600 to-rose-400"
+                  }`}
+                  style={{ width: `${validationResponse.health_score}%` }}
                 />
               </div>
-              <p className="text-[11px] text-slate-300 font-light mt-3 leading-relaxed">
-                {validationReport.summary}
+
+              <p className="text-[11px] text-slate-300 font-light leading-relaxed">
+                {validationResponse.summary}
               </p>
             </div>
 
-            {/* Validation Issues List */}
-            <div className="space-y-2.5">
-              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                DETECTED STRUCTURAL CHECKS ({validationReport.issues.length})
+            {/* Severity Tabs */}
+            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-950/80 border border-white/[0.08] text-[11px]">
+              <button
+                onClick={() => setValSeverityFilter("all")}
+                className={`flex-1 py-1 rounded-lg transition flex items-center justify-center gap-1 font-semibold ${
+                  valSeverityFilter === "all"
+                    ? "bg-white/[0.1] text-white"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <span>All</span>
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-white/[0.06] text-slate-300">
+                  {validationResponse.violations.length}
+                </span>
+              </button>
+              <button
+                onClick={() => setValSeverityFilter("critical")}
+                className={`flex-1 py-1 rounded-lg transition flex items-center justify-center gap-1 font-semibold ${
+                  valSeverityFilter === "critical"
+                    ? "bg-red-500/20 text-red-300 border border-red-500/40 font-bold"
+                    : "text-slate-400 hover:text-red-300"
+                }`}
+              >
+                <span>Critical</span>
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-red-950 text-red-400 font-bold">
+                  {criticalCount}
+                </span>
+              </button>
+              <button
+                onClick={() => setValSeverityFilter("warning")}
+                className={`flex-1 py-1 rounded-lg transition flex items-center justify-center gap-1 font-semibold ${
+                  valSeverityFilter === "warning"
+                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold"
+                    : "text-slate-400 hover:text-amber-300"
+                }`}
+              >
+                <span>Warning</span>
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-950 text-amber-400 font-bold">
+                  {warningCount}
+                </span>
+              </button>
+              <button
+                onClick={() => setValSeverityFilter("info")}
+                className={`flex-1 py-1 rounded-lg transition flex items-center justify-center gap-1 font-semibold ${
+                  valSeverityFilter === "info"
+                    ? "bg-sky-500/20 text-sky-300 border border-sky-500/40 font-bold"
+                    : "text-slate-400 hover:text-sky-300"
+                }`}
+              >
+                <span>Info</span>
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-sky-950 text-sky-400 font-bold">
+                  {infoCount}
+                </span>
+              </button>
+            </div>
+
+            {/* Category Filter Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-[10px]">
+              {(["all", "topology", "capacity", "resilience", "consistency", "cost"] as const).map(
+                (cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setValCategoryFilter(cat)}
+                    className={`px-2.5 py-1 rounded-lg border whitespace-nowrap uppercase tracking-wider transition ${
+                      valCategoryFilter === cat
+                        ? "border-cyan-500/60 bg-cyan-500/20 text-cyan-200 font-bold"
+                        : "border-white/[0.06] bg-slate-950/60 text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                )
+              )}
+            </div>
+
+            {/* Search filter input */}
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input
+                type="text"
+                placeholder="Search rule violations or affected components..."
+                value={valSearchQuery}
+                onChange={(e) => setValSearchQuery(e.target.value)}
+                className="w-full bg-slate-950 border border-white/[0.08] focus:border-cyan-500/50 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none"
+              />
+            </div>
+
+            {/* Violations List */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                <span>ACTIVE RULE VIOLATIONS ({filteredViolations.length})</span>
               </div>
-              {validationReport.issues.map((issue) => (
-                <div
-                  key={issue.id}
-                  className={`p-3.5 rounded-xl border flex flex-col gap-1.5 ${
-                    issue.severity === "error"
-                      ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
-                      : issue.severity === "warning"
-                      ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
-                      : "border-cyan-500/30 bg-cyan-500/10 text-cyan-300"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold">{issue.title}</span>
-                    <span className="text-[9px] uppercase px-1.5 py-0.2 rounded font-bold border border-current">
-                      {issue.severity}
-                    </span>
+
+              {filteredViolations.length === 0 ? (
+                <div className="p-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 text-center space-y-2">
+                  <div className="w-10 h-10 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
+                    <CheckCircle2 className="w-5 h-5" />
                   </div>
-                  <p className="text-[11px] text-slate-300 font-light leading-relaxed">
-                    {issue.message}
+                  <h4 className="text-xs font-bold text-emerald-300">
+                    No Violations in This Category
+                  </h4>
+                  <p className="text-[11px] text-slate-400 max-w-[280px] mx-auto font-light">
+                    All distributed system first-principles invariants are verified and healthy.
                   </p>
-                  <div className="text-[10px] font-mono text-slate-400 pt-1.5 border-t border-white/[0.06]">
-                    <span className="text-cyan-400 font-semibold">Fix: </span>
-                    <span>{issue.remediation}</span>
-                  </div>
                 </div>
-              ))}
+              ) : (
+                filteredViolations.map((violation) => {
+                  const isCritical = violation.severity === "critical";
+                  const isWarning = violation.severity === "warning";
+
+                  return (
+                    <div
+                      key={violation.rule_id}
+                      className={`p-3.5 rounded-2xl border transition-all duration-200 flex flex-col gap-2.5 ${
+                        isCritical
+                          ? "border-red-500/40 bg-red-500/[0.07] shadow-lg shadow-red-950/20"
+                          : isWarning
+                          ? "border-amber-500/40 bg-amber-500/[0.07] shadow-lg shadow-amber-950/20"
+                          : "border-sky-500/40 bg-sky-500/[0.07]"
+                      }`}
+                    >
+                      {/* Violation Header */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wider border ${
+                              isCritical
+                                ? "bg-red-950 text-red-300 border-red-700"
+                                : isWarning
+                                ? "bg-amber-950 text-amber-300 border-amber-700"
+                                : "bg-sky-950 text-sky-300 border-sky-700"
+                            }`}
+                          >
+                            {violation.severity}
+                          </span>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 px-1.5 py-0.2 rounded bg-white/[0.04] border border-white/[0.06]">
+                            {violation.category}
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-400 font-bold shrink-0">
+                          {violation.rule_id}
+                        </span>
+                      </div>
+
+                      {/* Rule Name & Message */}
+                      <div>
+                        <h4 className="text-xs font-bold text-white tracking-wide">
+                          {violation.rule_name.replace(/_/g, " ")}
+                        </h4>
+                        <p className="text-[11px] text-slate-300 font-light mt-1 leading-relaxed">
+                          {violation.message}
+                        </p>
+                      </div>
+
+                      {/* Suggested Remediation Box */}
+                      <div className="p-2.5 rounded-xl bg-slate-950/80 border border-white/[0.06] text-[10px] space-y-1">
+                        <div className="text-cyan-400 font-bold flex items-center gap-1">
+                          <Wrench className="w-3 h-3" />
+                          <span>SUGGESTED REMEDIATION</span>
+                        </div>
+                        <p className="text-slate-300 leading-relaxed font-light">
+                          {violation.remediation}
+                        </p>
+                      </div>
+
+                      {/* Affected Components & Quick Action */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-white/[0.06]">
+                        {/* Affected Components */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] text-slate-500">Target:</span>
+                          {violation.node_ids.map((nodeId) => (
+                            <button
+                              key={nodeId}
+                              onClick={() => handleFocusNode(nodeId)}
+                              className="px-2 py-0.5 rounded-md bg-white/[0.05] hover:bg-cyan-500/20 text-cyan-300 hover:text-white border border-white/[0.08] hover:border-cyan-500/40 text-[10px] font-mono transition flex items-center gap-1"
+                              title="Click to zoom & select node"
+                            >
+                              <Target className="w-2.5 h-2.5" />
+                              <span>{nodeId}</span>
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Quick Fix Button */}
+                        {(violation.rule_id === "RULE-001" ||
+                          violation.rule_id === "RULE-017" ||
+                          violation.rule_id === "RULE-002" ||
+                          violation.rule_id === "RULE-003" ||
+                          violation.rule_id === "RULE-006" ||
+                          violation.rule_id === "RULE-012") && (
+                          <button
+                            onClick={() => handleApplyQuickFix(violation)}
+                            className="px-2.5 py-1 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 text-[10px] font-bold transition flex items-center gap-1 shadow-sm"
+                          >
+                            <Sparkles className="w-3 h-3 text-cyan-400" />
+                            <span>Quick Fix</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Invariants Verified Section */}
+            {validationResponse.passed_rules.length > 0 && (
+              <div className="p-4 rounded-2xl border border-white/[0.06] bg-slate-950/60 space-y-2.5">
+                <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  <span className="flex items-center gap-1.5 text-emerald-400">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>VERIFIED INVARIANTS ({validationResponse.passed_rules.length})</span>
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {validationResponse.passed_rules.map((rule) => (
+                    <div
+                      key={rule}
+                      className="p-2 rounded-lg bg-emerald-500/[0.04] border border-emerald-500/15 text-[10px] text-emerald-300 flex items-center gap-2"
+                    >
+                      <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                      <span className="font-semibold">{rule.replace(/_/g, " ")}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Estimated Cloud Monthly Cost Breakdown */}
+            <div className="p-4 rounded-2xl border border-white/[0.06] bg-slate-950/60 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>MONTHLY CLOUD COST BREAKDOWN</span>
+                </span>
+                <span className="text-xs font-bold text-emerald-400 font-mono">
+                  ${validationResponse.estimated_monthly_cost.toLocaleString()}/mo
+                </span>
+              </div>
+
+              <div className="space-y-2 text-[10px]">
+                {Object.entries(validationResponse.cost_breakdown).map(([category, amount]) => (
+                  <div key={category} className="space-y-1">
+                    <div className="flex items-center justify-between text-slate-400">
+                      <span className="capitalize">{category} Tier</span>
+                      <span className="font-mono text-slate-200">${amount.toLocaleString()}/mo</span>
+                    </div>
+                    <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden border border-white/[0.04]">
+                      <div
+                        className="bg-cyan-500/60 h-full rounded-full"
+                        style={{
+                          width: `${
+                            validationResponse.estimated_monthly_cost > 0
+                              ? (amount / validationResponse.estimated_monthly_cost) * 100
+                              : 0
+                          }%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>

@@ -27,7 +27,8 @@ async def validate_architecture_graph(
     payload: GraphData,
 ) -> ValidationResponse:
     """Standalone deterministic rule validation of an architecture graph."""
-    return rule_engine.evaluate(payload)
+    scale_meta = getattr(payload, "scale_metadata", {}) or {}
+    return rule_engine.evaluate(payload, scale_metadata=scale_meta)
 
 
 @router.get("", response_model=list[DesignSummary])

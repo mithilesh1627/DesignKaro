@@ -292,3 +292,78 @@ def test_high_burst_without_async_buffer_rule_012():
     res = rule_engine.evaluate(graph, scale_metadata={"write_qps": 15000})
     assert any(v.rule_id == "RULE-012" for v in res.violations)
 
+
+def test_client_to_cache_rule_013():
+    graph = GraphData(
+        nodes=[
+            CanvasNodeData(id="client-1", type="client", label="Client"),
+            CanvasNodeData(id="cache-1", type="cache", label="Redis Cache"),
+            CanvasNodeData(id="db-1", type="relational_db", label="Postgres", properties=NodePropertySchema(replicas=2)),
+        ],
+        edges=[CanvasEdgeData(id="e1", source="client-1", target="cache-1")],
+    )
+    res = rule_engine.evaluate(graph)
+    assert any(v.rule_id == "RULE-013" for v in res.violations)
+    assert any(v.category == "topology" for v in res.violations)
+
+
+def test_service_capacity_bottleneck_rule_015():
+    # 10,000 QPS hitting service with only 1 pod * 1,000 QPS = 1,000 capacity
+    graph = GraphData(
+        nodes=[
+            CanvasNodeData(id="client-1", type="client", label="Client"),
+            CanvasNodeData(id="gw-1", type="gateway", label="Gateway"),
+            CanvasNodeData(id="s1", type="service", label="Order Pod", properties=NodePropertySchema(replicas=1, qps_capacity=1000)),
+            CanvasNodeData(id="db-1", type="relational_db", label="Postgres", properties=NodePropertySchema(replicas=2)),
+        ],
+        edges=[
+            CanvasEdgeData(id="e0", source="client-1", target="gw-1"),
+            CanvasEdgeData(id="e1", source="gw-1", target="s1"),
+            CanvasEdgeData(id="e2", source="s1", target="db-1"),
+        ],
+    )
+    res = rule_engine.evaluate(graph, scale_metadata={"peak_qps": 10000})
+    assert any(v.rule_id == "RULE-015" for v in res.violations)
+    assert any(v.category == "capacity" for v in res.violations)
+
+
+def test_cache_inconsistency_write_bypass_rule_020():
+    # Service writes to DB with write_path edge but does not update cache
+    graph = GraphData(
+        nodes=[
+            CanvasNodeData(id="client-1", type="client", label="Client"),
+            CanvasNodeData(id="gw-1", type="gateway", label="Gateway"),
+            CanvasNodeData(id="s1", type="service", label="Writer Service", properties=NodePropertySchema(replicas=2)),
+            CanvasNodeData(id="cache-1", type="cache", label="Redis Cache", properties=NodePropertySchema(replicas=2)),
+            CanvasNodeData(id="db-1", type="relational_db", label="Postgres", properties=NodePropertySchema(replicas=2)),
+        ],
+        edges=[
+            CanvasEdgeData(id="e0", source="client-1", target="gw-1"),
+            CanvasEdgeData(id="e1", source="gw-1", target="s1"),
+            CanvasEdgeData(id="e2", source="s1", target="db-1", properties={"connectionType": "write_path"}),
+        ],
+    )
+    res = rule_engine.evaluate(graph)
+    assert any(v.rule_id == "RULE-020" for v in res.violations)
+    assert any(v.category == "consistency" for v in res.violations)
+
+
+def test_cost_estimation_breakdown():
+    graph = GraphData(
+        nodes=[
+            CanvasNodeData(id="gw-1", type="gateway", label="Gateway", properties=NodePropertySchema(replicas=2)),
+            CanvasNodeData(id="s1", type="service", label="Service", properties=NodePropertySchema(replicas=3)),
+            CanvasNodeData(id="cache-1", type="cache", label="Redis", properties=NodePropertySchema(replicas=2)),
+            CanvasNodeData(id="db-1", type="relational_db", label="Postgres", properties=NodePropertySchema(replicas=2)),
+        ],
+        edges=[],
+    )
+    res = rule_engine.evaluate(graph)
+    # Expected: GW (2*30=60) + Svc (3*40=120) + Cache (2*60=120) + DB (2*120=240) = 540
+    assert res.estimated_monthly_cost == 540.0
+    assert res.cost_breakdown["compute"] == 120.0
+    assert res.cost_breakdown["database"] == 240.0
+    assert res.cost_breakdown["cache"] == 120.0
+    assert res.cost_breakdown["networking"] == 60.0
+
+

@@ -35,6 +35,7 @@ class CanvasEdgeData(BaseModel):
 class GraphData(BaseModel):
     nodes: list[CanvasNodeData] = Field(default_factory=list)
     edges: list[CanvasEdgeData] = Field(default_factory=list)
+    scale_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class DesignCreate(BaseModel):
@@ -87,7 +88,8 @@ class DesignDetail(BaseModel):
 class RuleViolation(BaseModel):
     rule_id: str
     rule_name: str
-    severity: str  # error, warning, optimization
+    severity: str  # critical, warning, info
+    category: str = "topology"  # topology, capacity, resilience, consistency, cost
     node_ids: list[str] = Field(default_factory=list)
     message: str
     remediation: str
@@ -100,3 +102,5 @@ class ValidationResponse(BaseModel):
     passed_rules: list[str]
     summary: str
     component_counts: dict[str, int]
+    estimated_monthly_cost: float = 0.0
+    cost_breakdown: dict[str, float] = Field(default_factory=dict)
