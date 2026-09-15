@@ -164,15 +164,17 @@ export const Navigation: React.FC<NavigationProps> = () => {
 
         {/* Right Actions & User Dashboard */}
         <div className="flex items-center gap-2.5 sm:gap-4 relative" ref={dropdownRef}>
-          {/* LLM Engine BYOK Settings Button */}
-          <button
-            onClick={() => setLlmModalOpen(true)}
-            title="Configure LLM Provider (Ollama / BYOK)"
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] hover:bg-cyan-500/10 hover:border-cyan-500/30 text-slate-300 hover:text-cyan-300 text-xs font-mono transition group"
-          >
-            <Cpu className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 transition-transform" />
-            <span className="hidden sm:inline font-medium">AI Model</span>
-          </button>
+          {/* LLM Engine BYOK Settings Button (Only visible when signed in) */}
+          {isUserLoggedIn && (
+            <button
+              onClick={() => setLlmModalOpen(true)}
+              title="Configure LLM Provider (Ollama / BYOK)"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] hover:bg-cyan-500/10 hover:border-cyan-500/30 text-slate-300 hover:text-cyan-300 text-xs font-mono transition group"
+            >
+              <Cpu className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 transition-transform" />
+              <span className="hidden sm:inline font-medium">AI Model</span>
+            </button>
+          )}
 
           {/* Authenticated User Menu OR Unauthenticated Sign In */}
           {isUserLoggedIn ? (
@@ -363,8 +365,8 @@ export const Navigation: React.FC<NavigationProps> = () => {
 
             {/* Mobile Progress Section (Authenticated Only) */}
             {isUserLoggedIn && (
-              <div className="p-3.5 rounded-2xl border border-white/[0.08] bg-slate-900/80">
-                <div className="flex items-center justify-between mb-2">
+              <div className="p-3.5 rounded-2xl border border-white/[0.08] bg-slate-900/80 space-y-2.5">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs font-mono font-bold text-cyan-400">
                     <TrendingUp className="w-3.5 h-3.5" />
                     <span>PROGRESS</span>
@@ -373,7 +375,7 @@ export const Navigation: React.FC<NavigationProps> = () => {
                     {progressData?.readiness_score ?? 0}%
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-400 font-mono mb-3">
+                <p className="text-[11px] text-slate-400 font-mono">
                   {progressData?.streak_days ?? 0} Day Streak • {progressData?.current_rank || "Guest Engineer"}
                 </p>
                 <Link
@@ -384,6 +386,16 @@ export const Navigation: React.FC<NavigationProps> = () => {
                   <span>Open Progress Dashboard</span>
                   <ArrowRight className="w-3 h-3" />
                 </Link>
+                <button
+                  onClick={() => {
+                    setMobileOpen(false);
+                    setLlmModalOpen(true);
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-300 hover:text-cyan-300 text-xs font-mono transition"
+                >
+                  <Cpu className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Configure AI Model</span>
+                </button>
               </div>
             )}
 
