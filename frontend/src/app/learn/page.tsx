@@ -239,11 +239,11 @@ export default function LearnIndexPage() {
                 )}
 
                 <Link
-                  href="/design"
+                  href="/simulator"
                   className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 hover:bg-slate-800 hover:border-slate-600 px-4 py-2.5 text-xs font-mono text-slate-300 transition-all"
                 >
                   <Layers className="h-3.5 w-3.5 text-sky-400" />
-                  <span>Open Architecture Canvas</span>
+                  <span>Open Architecture Simulator</span>
                 </Link>
               </div>
             </div>

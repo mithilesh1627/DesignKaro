@@ -3,6 +3,15 @@ const nextConfig = {
   output: "standalone",
   transpilePackages: ["zustand"],
   reactStrictMode: true,
+  async redirects() {
+    return [
+      {
+        source: "/design",
+        destination: "/simulator",
+        permanent: true,
+      },
+    ];
+  },
   async rewrites() {
     const backendUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000";
     return [

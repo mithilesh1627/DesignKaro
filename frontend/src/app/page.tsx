@@ -449,7 +449,7 @@ export default function LandingPage() {
             <button
               onClick={() => {
                 if (isAuthenticated && user) {
-                  window.location.href = "/design";
+                  window.location.href = "/simulator";
                 } else {
                   setAuthModalOpen(true);
                 }
@@ -547,14 +547,14 @@ export default function LandingPage() {
               <button
                 onClick={() => {
                   if (isAuthenticated && user) {
-                    window.location.href = "/design";
+                    window.location.href = "/simulator";
                   } else {
                     setAuthModalOpen(true);
                   }
                 }}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs font-mono transition shadow-lg shadow-cyan-500/20 active:scale-95"
               >
-                <span>Launch Full Canvas</span>
+                <span>Launch Simulator</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -1125,7 +1125,7 @@ export default function LandingPage() {
             {/* Blueprint 2 */}
             <div
               onClick={() => {
-                window.location.href = "/design";
+                window.location.href = "/simulator";
               }}
               className="zen-bento-card p-5 rounded-2xl group hover:border-sky-500/40 transition flex flex-col justify-between cursor-pointer"
             >
@@ -1150,7 +1150,7 @@ export default function LandingPage() {
             {/* Blueprint 3 */}
             <div
               onClick={() => {
-                window.location.href = "/design";
+                window.location.href = "/simulator";
               }}
               className="zen-bento-card p-5 rounded-2xl group hover:border-indigo-500/40 transition flex flex-col justify-between cursor-pointer"
             >

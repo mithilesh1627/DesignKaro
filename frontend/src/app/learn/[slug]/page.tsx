@@ -1223,10 +1223,10 @@ export default function LessonDetailPage() {
             </Link>
           ) : (
             <Link
-              href="/design"
+              href="/simulator"
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-xs font-bold text-slate-950 transition-colors shadow-md"
             >
-              <span>Apply in Canvas</span>
+              <span>Apply in Simulator</span>
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           )}

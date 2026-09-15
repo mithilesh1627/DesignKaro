@@ -357,10 +357,10 @@ export default function ProgressPage() {
                   Explore Curriculum
                 </Link>
                 <Link
-                  href="/design"
+                  href="/simulator"
                   className="flex-1 text-center px-4 py-2.5 rounded-xl border border-white/[0.08] hover:border-white/20 bg-slate-800/80 text-xs font-mono text-slate-200 transition-colors"
                 >
-                  Open Canvas
+                  Open Simulator
                 </Link>
               </div>
             </div>
@@ -408,10 +408,10 @@ export default function ProgressPage() {
                 <span>SAVED ARCHITECTURAL BLUEPRINTS</span>
               </div>
               <Link
-                href="/design"
+                href="/simulator"
                 className="text-xs font-mono text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5 transition-colors"
               >
-                <span>Launch Canvas</span>
+                <span>Launch Simulator</span>
                 <ExternalLink className="h-3 w-3" />
               </Link>
             </div>
@@ -435,10 +435,10 @@ export default function ProgressPage() {
                   <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 pt-3 border-t border-white/[0.04]">
                     <span>{new Date(design.updated_at).toLocaleDateString()}</span>
                     <Link
-                      href={`/design?id=${design.public_id || design.id}`}
+                      href={`/simulator?id=${design.public_id || design.id}`}
                       className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-semibold"
                     >
-                      <span>Open Canvas</span>
+                      <span>Open Simulator</span>
                       <ExternalLink className="h-2.5 w-2.5" />
                     </Link>
                   </div>
