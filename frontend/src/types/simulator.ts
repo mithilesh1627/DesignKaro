@@ -53,6 +53,8 @@ export interface ArchitectureGraphMetadata {
   version: number;
   createdAt: string;
   updatedAt: string;
+  change_summary?: string;
+  last_event_type?: string;
 }
 
 export interface ArchitectureGraph {
@@ -218,4 +220,129 @@ export interface SimulationResult {
   ai_bottleneck_explanation: string | null;
   bottleneck_remediation: string | null;
   suggested_action: string | null;
+  // Phase 6 Chaos Incident Report
+  chaos_incident_report?: ChaosIncidentReport | null;
 }
+
+// ============================================================================
+// PHASE 6: CHAOS MODE (FAILURE INJECTION) TYPES
+// ============================================================================
+
+export type ChaosFailureType =
+  | "NONE"
+  | "KILL_REDIS"
+  | "KILL_POSTGRES"
+  | "KILL_KAFKA"
+  | "KILL_APP_SERVER"
+  | "LATENCY_SPIKE"
+  | "DROP_REQUESTS"
+  | "DB_OVERLOAD"
+  | "CACHE_FAILURE"
+  | "KILL_NODE"
+  | "HEAL_SYSTEM";
+
+export interface ChaosIncidentReport {
+  scenario: ChaosFailureType;
+  title: string;
+  severity?: "CRITICAL" | "DEGRADED" | "WARNING";
+  failed_node_ids: string[];
+  degraded_node_ids: string[];
+  what_happened: string;
+  why_it_happened: string;
+  mitigation?: string;
+  mitigation_strategies: string[];
+  recommended_remediation?: string | null;
+}
+
+// ============================================================================
+// PHASE 7: INTERVIEW MODE (SOCRATIC INTERVIEWER) TYPES
+// ============================================================================
+
+export interface InterviewMessage {
+  id: string;
+  sender: "interviewer" | "candidate" | "system";
+  text: string;
+  timestamp: string;
+  feedback?: string;
+  score_delta?: number;
+  is_hint?: boolean;
+}
+
+export interface InterviewRubricScores {
+  requirements_understanding: number; // 0-10
+  scale_estimation: number;           // 0-10
+  architecture: number;               // 0-10
+  trade_offs: number;                 // 0-10
+  scalability: number;                // 0-10
+  reliability: number;                // 0-10
+  communication: number;              // 0-10
+}
+
+export interface InterviewStageInfo {
+  stage: number;
+  title: string;
+  shortTitle: string;
+  description: string;
+  interviewerQuestion: string;
+  expectedKeywords: string[];
+  hint: string;
+}
+
+// ============================================================================
+// PHASE 8: EVALUATION & VERSION DIFF TYPES
+// ============================================================================
+
+export interface StrongDecision {
+  title: string;
+  description: string;
+  impact: string;
+}
+
+export interface WeakDecision {
+  title: string;
+  risk: string;
+  remediation: string;
+  severity: "critical" | "warning";
+}
+
+export interface ArchitectureEvaluationReport {
+  overall_score: number;
+  scalability_score: number;
+  reliability_score: number;
+  performance_score: number;
+  cost_score: number;
+  strong_decisions: StrongDecision[];
+  weak_decisions: WeakDecision[];
+  ai_verdict: {
+    decision: "Strong Hire" | "Hire" | "Leaning Hire" | "Needs Improvement";
+    level: "Principal / Staff Architect (L6+)" | "Senior Architect (L5)" | "Software Engineer (L4)";
+    summary: string;
+    key_strengths: string[];
+    critical_risks: string[];
+    production_roadmap: string[];
+  };
+}
+
+export interface NodeDiffItem {
+  id: string;
+  name: string;
+  type: string;
+  changeType: "ADDED" | "REMOVED" | "MODIFIED";
+  deltas?: Record<string, { old: any; new: any }>;
+}
+
+export interface EdgeDiffItem {
+  id: string;
+  source: string;
+  target: string;
+  changeType: "ADDED" | "REMOVED";
+}
+
+export interface ArchitectureVersionDiff {
+  v1: number;
+  v2: number;
+  nodes: NodeDiffItem[];
+  edges: EdgeDiffItem[];
+  summary: string;
+}
+

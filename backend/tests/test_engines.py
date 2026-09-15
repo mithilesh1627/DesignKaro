@@ -135,3 +135,33 @@ async def test_simulation_api_endpoint(client, sample_graph):
     assert "p95_latency_ms" in data
     assert "bottleneck_explanation" in data
 
+
+def test_chaos_mode_scenarios(sample_graph):
+    scenarios = [
+        "KILL_REDIS",
+        "KILL_POSTGRES",
+        "KILL_KAFKA",
+        "KILL_APP_SERVER",
+        "LATENCY_SPIKE",
+        "DROP_REQUESTS",
+        "DB_OVERLOAD",
+        "CACHE_FAILURE",
+        "HEAL_SYSTEM",
+    ]
+    traffic = TrafficProfile(base_qps=2000, peak_qps=8000, duration_sec=6, step_sec=2)
+
+    for sc in scenarios:
+        failure = FailureConfig(failure_type=sc, start_second=2, duration_second=4)
+        res = traffic_simulator.run_simulation(sample_graph, traffic, failure)
+        assert res.total_requests_simulated > 0
+        assert len(res.ticks) == 3
+        if sc == "HEAL_SYSTEM":
+            assert res.chaos_incident_report is None
+        else:
+            assert res.chaos_incident_report is not None
+            assert res.chaos_incident_report.scenario == sc
+            assert len(res.chaos_incident_report.mitigation_strategies) >= 2
+            assert len(res.chaos_incident_report.what_happened) > 10
+            assert len(res.chaos_incident_report.why_it_happened) > 10
+
+

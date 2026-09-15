@@ -15,10 +15,25 @@ class TrafficProfile(BaseModel):
 
 
 class FailureConfig(BaseModel):
-    failure_type: str = Field(default="NONE", pattern="^(NONE|KILL_NODE|LATENCY_SPIKE|PACKET_LOSS|SPLIT_BRAIN)$")
+    failure_type: str = Field(
+        default="NONE",
+        pattern="^(NONE|KILL_NODE|KILL_REDIS|KILL_POSTGRES|KILL_KAFKA|KILL_APP_SERVER|LATENCY_SPIKE|DROP_REQUESTS|PACKET_LOSS|DB_OVERLOAD|CACHE_FAILURE|SPLIT_BRAIN|HEAL_SYSTEM)$",
+    )
     target_node_id: str | None = None
     start_second: int = Field(default=10, ge=0)
     duration_second: int = Field(default=10, ge=1)
+
+
+class ChaosIncidentReport(BaseModel):
+    scenario: str
+    title: str
+    failed_node_ids: list[str] = Field(default_factory=list)
+    degraded_node_ids: list[str] = Field(default_factory=list)
+    what_happened: str
+    why_it_happened: str
+    mitigation_strategies: list[str] = Field(default_factory=list)
+    recommended_remediation: str | None = None
+
 
 
 class NodeTickMetric(BaseModel):
@@ -77,5 +92,6 @@ class SimulationResponse(BaseModel):
     ai_bottleneck_explanation: str | None = None
     bottleneck_remediation: str | None = None
     suggested_action: str | None = None
+    chaos_incident_report: ChaosIncidentReport | None = None
 
     model_config = ConfigDict(from_attributes=True)

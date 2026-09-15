@@ -70,6 +70,12 @@ import {
   TrendingUp,
   BarChart3,
   SlidersHorizontal,
+  GitCompare,
+  FileDiff,
+  ShieldAlert,
+  Lightbulb,
+  CheckSquare,
+  XSquare,
 } from "lucide-react";
 import {
   ArchitectureComponentCategory,
@@ -91,6 +97,12 @@ import {
   SimulationResult,
   SimulationTick,
   SimulationNodeMetric,
+  ChaosFailureType,
+  ChaosIncidentReport,
+  InterviewMessage,
+  InterviewRubricScores,
+  ArchitectureEvaluationReport,
+  ArchitectureVersionDiff,
 } from "@/types/simulator";
 import {
   createArchitectureEvent,
@@ -107,6 +119,17 @@ import {
   runClientSimulation,
   runBackendSimulation,
 } from "@/lib/simulationEngine";
+import {
+  INTERVIEW_STAGES,
+  getInitialInterviewState,
+  evaluateInterviewTurn,
+  computeOverallRubricPercentage,
+} from "@/lib/interviewEngine";
+import {
+  evaluateArchitectureComprehensive,
+  computeGraphDiff,
+} from "@/lib/evaluationEngine";
+
 
 // ============================================================================
 // COMPONENT LIBRARY DEFINITIONS
@@ -440,7 +463,14 @@ const SimulatorCustomNode = ({ data }: { data: CustomFlowData }) => {
   const throughput = data?.throughputQps ?? 0;
 
   let borderStyle = `${comp.borderClass} hover:border-cyan-500/60`;
-  if (data.isSelected) {
+  const isCrashed = data.nodeStatus === "CRASHED";
+  const isDegraded = data.nodeStatus === "DEGRADED";
+
+  if (isCrashed) {
+    borderStyle = "border-red-600 ring-4 ring-red-600/90 shadow-[0_0_35px_rgba(239,68,68,0.9)] animate-pulse bg-red-950/40";
+  } else if (isDegraded) {
+    borderStyle = "border-amber-400 ring-2 ring-amber-400/80 shadow-[0_0_25px_rgba(251,191,36,0.6)] bg-amber-950/30";
+  } else if (data.isSelected) {
     borderStyle = "border-cyan-400 ring-2 ring-cyan-500/40 shadow-[0_0_20px_rgba(6,182,212,0.25)]";
   } else if (isBottleneck) {
     borderStyle = "border-red-500 ring-4 ring-red-500/80 shadow-[0_0_32px_rgba(239,68,68,0.75)] animate-pulse";
@@ -456,13 +486,30 @@ const SimulatorCustomNode = ({ data }: { data: CustomFlowData }) => {
     <div
       className={`relative px-4 py-3 rounded-xl border bg-[#091122]/95 backdrop-blur-xl shadow-2xl min-w-[195px] transition-all duration-200 cursor-pointer ${borderStyle}`}
     >
+      {/* Crashed Node Badge */}
+      {isCrashed && (
+        <div className="absolute -top-3.5 left-2 px-2.5 py-0.5 rounded-full bg-red-600 text-white text-[9px] font-mono font-bold flex items-center gap-1 shadow-lg shadow-red-950/80 z-30 animate-bounce">
+          <Flame className="w-3 h-3 text-amber-200" />
+          <span>FAULT: CRASHED (0 QPS)</span>
+        </div>
+      )}
+
+      {/* Degraded Node Badge */}
+      {!isCrashed && isDegraded && !isBottleneck && (
+        <div className="absolute -top-3.5 left-2 px-2.5 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[9px] font-mono font-bold flex items-center gap-1 shadow-md shadow-amber-950/70 z-30">
+          <AlertTriangle className="w-3 h-3 text-slate-950" />
+          <span>DEGRADED</span>
+        </div>
+      )}
+
       {/* Primary Bottleneck Badge */}
-      {isBottleneck && (
+      {!isCrashed && isBottleneck && (
         <div className="absolute -top-3.5 left-2 px-2 py-0.5 rounded-full bg-red-600 text-white text-[9px] font-mono font-bold flex items-center gap-1 shadow-lg shadow-red-950/80 z-30 animate-bounce">
           <Flame className="w-3 h-3 text-amber-200" />
           <span>PRIMARY BOTTLENECK ({utilPercent}%)</span>
         </div>
       )}
+
 
       {/* Violation Severity Badge (when not bottleneck) */}
       {!isBottleneck && severity === "critical" && (
@@ -678,7 +725,7 @@ function SimulatorContent() {
   const [interviewSubmitted, setInterviewSubmitted] = useState<boolean>(false);
 
   // --------------------------------------------------------------------------
-  // PHASE 5: SIMULATION & TRAFFIC ENGINE STATE
+  // PHASE 5 & 6: SIMULATION, TRAFFIC & CHAOS ENGINE STATE
   // --------------------------------------------------------------------------
   const [trafficProfile, setTrafficProfile] = useState<SimulationTrafficProfile>(DEFAULT_TRAFFIC_PROFILE);
   const [activePresetId, setActivePresetId] = useState<string>("surge");
@@ -687,11 +734,56 @@ function SimulatorContent() {
   const [isBackendSimulating, setIsBackendSimulating] = useState<boolean>(false);
   const [backendSimResult, setBackendSimResult] = useState<SimulationResult | null>(null);
 
-  // Instant deterministic client-side simulation (0ms latency, fluid 60fps slider reaction)
+  // Phase 6 Chaos Engineering State
+  const [activeChaosFailure, setActiveChaosFailure] = useState<ChaosFailureType>("NONE");
+  const [chaosTargetNodeId, setChaosTargetNodeId] = useState<string | null>(null);
+  const [simulationSubTab, setSimulationSubTab] = useState<"traffic" | "chaos">("traffic");
+
+  // Instant deterministic client-side simulation with 0ms Chaos injection
   const activeSimulationResult: SimulationResult = useMemo(() => {
     if (backendSimResult) return backendSimResult;
-    return runClientSimulation(graphState, trafficProfile);
-  }, [backendSimResult, graphState, trafficProfile]);
+    return runClientSimulation(
+      graphState,
+      trafficProfile,
+      activeChaosFailure,
+      chaosTargetNodeId || undefined
+    );
+  }, [backendSimResult, graphState, trafficProfile, activeChaosFailure, chaosTargetNodeId]);
+
+  // --------------------------------------------------------------------------
+  // PHASE 7: INTERVIEW MODE (SOCRATIC INTERVIEWER) STATE
+  // --------------------------------------------------------------------------
+  const [showInterviewModal, setShowInterviewModal] = useState<boolean>(false);
+  const [interviewStage, setInterviewStage] = useState<number>(1);
+  const [interviewMessages, setInterviewMessages] = useState<InterviewMessage[]>(() => getInitialInterviewState().messages);
+  const [interviewScores, setInterviewScores] = useState<InterviewRubricScores>(() => getInitialInterviewState().scores);
+  const [interviewInput, setInterviewInput] = useState<string>("");
+  const [isInterviewCritiqueLoading, setIsInterviewCritiqueLoading] = useState<boolean>(false);
+  const [interviewFeedbackToast, setInterviewFeedbackToast] = useState<string | null>(null);
+
+  // --------------------------------------------------------------------------
+  // PHASE 8: EVALUATION & VERSION DIFF STATE
+  // --------------------------------------------------------------------------
+  const [evaluationSubTab, setEvaluationSubTab] = useState<"verdict" | "history">("verdict");
+  const [diffBaseVersion, setDiffBaseVersion] = useState<number>(1);
+  const [diffTargetVersion, setDiffTargetVersion] = useState<number>(1);
+
+  // Keep diffTargetVersion synced with graphState version
+  useEffect(() => {
+    setDiffTargetVersion(graphState.metadata.version);
+  }, [graphState.metadata.version]);
+
+  const comprehensiveEvaluation: ArchitectureEvaluationReport = useMemo(() => {
+    return evaluateArchitectureComprehensive(graphState);
+  }, [graphState]);
+
+  const versionDiffResult: ArchitectureVersionDiff | null = useMemo(() => {
+    const baseGraph = history.find((h) => h.metadata.version === diffBaseVersion) || history[0];
+    const targetGraph = history.find((h) => h.metadata.version === diffTargetVersion) || graphState;
+    if (!baseGraph || !targetGraph) return null;
+    return computeGraphDiff(baseGraph, targetGraph);
+  }, [history, diffBaseVersion, diffTargetVersion, graphState]);
+
 
   // Discrete time playback ticker
   useEffect(() => {
@@ -831,6 +923,24 @@ function SimulatorContent() {
       const visualProps = getEdgeVisualProps(e.connectionType);
       const isSelected = e.id === selectedEdgeId;
       const isSim = activeTab === "simulation";
+      const sourceMetric = nodeMetricsMap.get(e.source);
+      const targetMetric = nodeMetricsMap.get(e.target);
+      const hasCrashedNode = sourceMetric?.status === "CRASHED" || targetMetric?.status === "CRASHED";
+      const hasDegradedNode = sourceMetric?.status === "DEGRADED" || targetMetric?.status === "DEGRADED";
+
+      let strokeColor = isSelected ? "#38bdf8" : isSim ? "#06b6d4" : visualProps.stroke;
+      let strokeDash = isSim ? "6, 6" : visualProps.strokeDasharray;
+      let strokeW = isSelected ? 3 : isSim ? 2.5 : visualProps.strokeWidth;
+
+      if (isSim && hasCrashedNode) {
+        strokeColor = "#ef4444";
+        strokeDash = "4, 4";
+        strokeW = 3;
+      } else if (isSim && hasDegradedNode) {
+        strokeColor = "#f59e0b";
+        strokeDash = "5, 5";
+      }
+
       return {
         id: e.id,
         source: e.source,
@@ -839,15 +949,16 @@ function SimulatorContent() {
         label: isSim && currentTick ? `${Math.round(currentTick.qps).toLocaleString()} RPS` : visualProps.label,
         labelStyle: visualProps.labelStyle,
         labelBgStyle: visualProps.labelBgStyle,
-        markerEnd: { type: MarkerType.ArrowClosed, color: visualProps.stroke },
+        markerEnd: { type: MarkerType.ArrowClosed, color: strokeColor },
         style: {
-          stroke: isSelected ? "#38bdf8" : isSim ? "#06b6d4" : visualProps.stroke,
-          strokeWidth: isSelected ? 3 : isSim ? 2.5 : visualProps.strokeWidth,
-          strokeDasharray: isSim ? "6, 6" : visualProps.strokeDasharray,
+          stroke: strokeColor,
+          strokeWidth: strokeW,
+          strokeDasharray: strokeDash,
         },
       };
     });
-  }, [graphState.edges, selectedEdgeId, activeTab, currentTick]);
+  }, [graphState.edges, selectedEdgeId, activeTab, currentTick, nodeMetricsMap]);
+
 
   const nodeTypes = SIMULATOR_NODE_TYPES;
 
@@ -881,6 +992,8 @@ function SimulatorContent() {
           ...nextGraph.metadata,
           version: newVersion,
           updatedAt: new Date().toISOString(),
+          change_summary: description,
+          last_event_type: eventType,
         };
 
         // Record Architecture Event
@@ -1555,6 +1668,98 @@ function SimulatorContent() {
     }
   }, [graphState, trafficProfile, showToast]);
 
+  // --------------------------------------------------------------------------
+  // PHASE 6: CHAOS FAILURE INJECTION HANDLERS
+  // --------------------------------------------------------------------------
+  const handleTriggerChaos = useCallback((failureType: ChaosFailureType, targetId?: string) => {
+    setBackendSimResult(null);
+    setActiveChaosFailure(failureType);
+    setChaosTargetNodeId(targetId || null);
+    setSimTickIndex(0);
+
+    if (failureType === "NONE" || failureType === "HEAL_SYSTEM") {
+      showToast("🟢 Chaos healed: All systems restored to healthy state!");
+    } else {
+      showToast(`💥 Injected fault: ${failureType.replace(/_/g, " ")}`);
+    }
+  }, [showToast]);
+
+  // --------------------------------------------------------------------------
+  // PHASE 7: INTERVIEW MODE HANDLERS
+  // --------------------------------------------------------------------------
+  const handleSendInterviewTurn = useCallback(() => {
+    if (!interviewInput.trim() || isInterviewCritiqueLoading) return;
+    const candidateMsgText = interviewInput.trim();
+    setInterviewInput("");
+
+    const userMsg: InterviewMessage = {
+      id: `msg-${Date.now()}-c`,
+      sender: "candidate",
+      text: candidateMsgText,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    };
+
+    setInterviewMessages((prev) => [...prev, userMsg]);
+    setIsInterviewCritiqueLoading(true);
+
+    setTimeout(() => {
+      const evalResult = evaluateInterviewTurn(
+        interviewStage,
+        candidateMsgText,
+        graphState,
+        interviewScores
+      );
+
+      const aiMsg: InterviewMessage = {
+        id: `msg-${Date.now()}-i`,
+        sender: "interviewer",
+        text: evalResult.interviewerReply,
+        feedback: evalResult.feedback,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+
+      setInterviewMessages((prev) => [...prev, aiMsg]);
+      setInterviewScores(evalResult.updatedScores);
+      if (evalResult.readyForNext) {
+        setInterviewStage(evalResult.nextStage);
+        showToast(`Advanced to Stage ${evalResult.nextStage}: ${INTERVIEW_STAGES[evalResult.nextStage - 1]?.title}`);
+      }
+      setIsInterviewCritiqueLoading(false);
+    }, 450);
+  }, [interviewInput, isInterviewCritiqueLoading, interviewStage, graphState, interviewScores, showToast]);
+
+  const handleRequestInterviewHint = useCallback(() => {
+    const currentStageInfo = INTERVIEW_STAGES.find((s) => s.stage === interviewStage) || INTERVIEW_STAGES[0];
+    const hintMsg: InterviewMessage = {
+      id: `msg-${Date.now()}-h`,
+      sender: "interviewer",
+      text: `💡 **Staff Architect Hint**: ${currentStageInfo.hint}`,
+      is_hint: true,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    };
+    setInterviewMessages((prev) => [...prev, hintMsg]);
+  }, [interviewStage]);
+
+  const handleRestartInterview = useCallback(() => {
+    const init = getInitialInterviewState();
+    setInterviewMessages(init.messages);
+    setInterviewScores(init.scores);
+    setInterviewStage(1);
+    showToast("Restarted System Design Interview session");
+  }, [showToast]);
+
+  // Restore past architecture version snapshot (Phase 8)
+  const handleRestoreVersion = useCallback((versionNum: number) => {
+    const targetGraph = history.find((h) => h.metadata.version === versionNum);
+    if (targetGraph) {
+      setGraphState(targetGraph);
+      setSelectedNodeId(null);
+      setSelectedEdgeId(null);
+      showToast(`↺ Restored architecture canvas to version ${versionNum}`);
+    }
+  }, [history, showToast]);
+
+
   // Node Drag on Canvas
   const onNodesChange = useCallback((changes: any) => {
     const hasMeaningfulChange = changes.some(
@@ -1814,8 +2019,22 @@ function SimulatorContent() {
             )}
           </button>
 
+          {/* Phase 7: Socratic System Design Interview Mode Button */}
+          <button
+            onClick={() => setShowInterviewModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-mono font-bold transition shadow-sm bg-gradient-to-r from-violet-600/25 via-indigo-600/20 to-cyan-600/20 border-violet-500/40 text-violet-300 hover:border-violet-400 hover:text-white shadow-[0_0_12px_rgba(139,92,246,0.2)]"
+            title="Launch Interactive Socratic System Design Interview"
+          >
+            <MessageSquare className="w-3.5 h-3.5 text-violet-400" />
+            <span className="hidden sm:inline">Interview</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-violet-500/25 text-violet-200 border border-violet-500/40">
+              Stage {interviewStage}/9
+            </span>
+          </button>
+
           {/* Rules & Invariants Drawer Toggle Button */}
           <button
+
             onClick={() => {
               const next = !showValidationDrawer;
               setShowValidationDrawer(next);
@@ -2132,12 +2351,12 @@ function SimulatorContent() {
         {/* ================================================================== */}
         <aside
           className={`${
-            activeTab === "simulation" ? "w-80 sm:w-96" : "w-72 sm:w-80"
+            activeTab === "simulation" || activeTab === "evaluation" ? "w-80 sm:w-[410px]" : "w-72 sm:w-80"
           } border-l border-white/[0.08] bg-[#070c18] flex flex-col shrink-0 z-20 transition-all duration-200`}
         >
           {activeTab === "simulation" ? (
             /* ============================================================== */
-            /* PHASE 5: SIMULATION COCKPIT PANEL                             */
+            /* PHASE 5 & 6: SIMULATION COCKPIT & CHAOS MODE PANEL            */
             /* ============================================================== */
             <div className="flex-1 flex flex-col overflow-hidden">
               {/* Cockpit Header */}
@@ -2164,6 +2383,35 @@ function SimulatorContent() {
                   <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
                   <span>Estimated Simulation</span>
                 </div>
+              </div>
+
+              {/* Simulation Cockpit Sub-tab Selector */}
+              <div className="flex border-b border-white/[0.08] bg-slate-950/70 p-1 shrink-0">
+                <button
+                  onClick={() => setSimulationSubTab("traffic")}
+                  className={`flex-1 py-1.5 text-[11px] font-bold font-mono rounded-lg transition flex items-center justify-center gap-1.5 ${
+                    simulationSubTab === "traffic"
+                      ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <Zap className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Traffic Load</span>
+                </button>
+                <button
+                  onClick={() => setSimulationSubTab("chaos")}
+                  className={`flex-1 py-1.5 text-[11px] font-bold font-mono rounded-lg transition flex items-center justify-center gap-1.5 ${
+                    simulationSubTab === "chaos"
+                      ? "bg-rose-500/20 text-rose-300 border border-rose-500/30 shadow-sm"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <Flame className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Chaos Mode</span>
+                  {activeChaosFailure !== "NONE" && (
+                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                  )}
+                </button>
               </div>
 
               {/* In-place Node Tuning Bar (if node selected) */}
@@ -2242,210 +2490,509 @@ function SimulatorContent() {
 
               {/* Scrollable Cockpit Content */}
               <div className="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-xs">
-                {/* 1. TRAFFIC PRESETS BAR */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                    <span className="flex items-center gap-1.5">
-                      <Zap className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Traffic Presets</span>
-                    </span>
-                    <span className="text-[10px] text-cyan-400">5 Scenarios</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {TRAFFIC_PRESETS.map((preset) => {
-                      const isSelected = activePresetId === preset.id;
-                      return (
+                {simulationSubTab === "traffic" ? (
+                  <>
+                    {/* 1. TRAFFIC PRESETS BAR */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                        <span className="flex items-center gap-1.5">
+                          <Zap className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Traffic Presets</span>
+                        </span>
+                        <span className="text-[10px] text-cyan-400">5 Scenarios</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {TRAFFIC_PRESETS.map((preset) => {
+                          const isSelected = activePresetId === preset.id;
+                          return (
+                            <button
+                              key={preset.id}
+                              onClick={() => handleSelectPreset(preset)}
+                              className={`p-2 rounded-xl border text-left transition flex flex-col justify-between ${
+                                isSelected
+                                  ? "border-cyan-400 bg-cyan-500/15 text-white ring-1 ring-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.2)]"
+                                  : "border-white/[0.08] bg-slate-950/60 text-slate-400 hover:text-slate-200 hover:border-white/[0.15]"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between w-full">
+                                <span className="text-[11px] font-bold truncate">{preset.name}</span>
+                                <span
+                                  className={`text-[9px] font-mono px-1 py-0.2 rounded font-bold ${
+                                    isSelected ? "bg-cyan-950 text-cyan-300" : "bg-white/[0.06] text-slate-400"
+                                  }`}
+                                >
+                                  {preset.badge}
+                                </span>
+                              </div>
+                              <p className="text-[9px] text-slate-400 line-clamp-1 mt-1 font-light">
+                                {preset.description}
+                              </p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* 2. LIVE PARAMETER SLIDERS */}
+                    <div className="p-3.5 rounded-2xl border border-white/[0.08] bg-slate-950/70 space-y-3">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                        <span className="flex items-center gap-1.5">
+                          <Sliders className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>Workload Controls</span>
+                        </span>
+                        <span className="text-[10px] text-cyan-400 font-normal">Realtime 60fps</span>
+                      </div>
+
+                      {/* Peak Target RPS Slider */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-400">Peak Ingress RPS</span>
+                          <span className="font-bold text-cyan-300 font-mono">
+                            {trafficProfile.peak_qps.toLocaleString()} RPS
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={5000}
+                          max={250000}
+                          step={5000}
+                          value={trafficProfile.peak_qps}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            setBackendSimResult(null);
+                            setTrafficProfile((prev) => ({
+                              ...prev,
+                              peak_qps: val,
+                              base_qps: Math.round(val * 0.2),
+                            }));
+                          }}
+                          className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-900 rounded-lg"
+                        />
+                        <div className="flex justify-between text-[9px] text-slate-500 font-mono">
+                          <span>5K</span>
+                          <span>50K</span>
+                          <span>100K</span>
+                          <span>250K</span>
+                        </div>
+                      </div>
+
+                      {/* Concurrent Users Slider */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-400">Concurrent Users</span>
+                          <span className="font-bold text-cyan-300 font-mono">
+                            {trafficProfile.concurrent_users.toLocaleString()}
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={10000}
+                          max={2000000}
+                          step={10000}
+                          value={trafficProfile.concurrent_users}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            setBackendSimResult(null);
+                            setTrafficProfile((prev) => ({ ...prev, concurrent_users: val }));
+                          }}
+                          className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-900 rounded-lg"
+                        />
+                      </div>
+
+                      {/* Read / Write Ratio Slider */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-400">Read / Write Ratio</span>
+                          <span className="font-bold font-mono">
+                            <span className="text-emerald-400">
+                              {Math.round(trafficProfile.read_ratio * 100)}% Read
+                            </span>
+                            <span className="text-slate-500"> / </span>
+                            <span className="text-rose-400">
+                              {Math.round((1 - trafficProfile.read_ratio) * 100)}% Write
+                            </span>
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0.05}
+                          max={0.99}
+                          step={0.05}
+                          value={trafficProfile.read_ratio}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            setBackendSimResult(null);
+                            setTrafficProfile((prev) => ({ ...prev, read_ratio: val }));
+                          }}
+                          className="w-full accent-emerald-400 cursor-pointer h-1.5 bg-slate-900 rounded-lg"
+                        />
+                      </div>
+
+                      {/* Cache Hit Ratio Slider */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-400">Cache Hit Ratio</span>
+                          <span className="font-bold text-rose-300 font-mono">
+                            {Math.round(trafficProfile.cache_hit_ratio * 100)}% Hit
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0.1}
+                          max={0.99}
+                          step={0.05}
+                          value={trafficProfile.cache_hit_ratio}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            setBackendSimResult(null);
+                            setTrafficProfile((prev) => ({ ...prev, cache_hit_ratio: val }));
+                          }}
+                          className="w-full accent-rose-400 cursor-pointer h-1.5 bg-slate-900 rounded-lg"
+                        />
+                      </div>
+
+                      {/* Payload Size & Network Latency */}
+                      <div className="grid grid-cols-2 gap-3 pt-1">
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="text-slate-400">Payload</span>
+                            <span className="font-bold text-slate-200">{trafficProfile.payload_kb} KB</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={1}
+                            max={50}
+                            step={1}
+                            value={trafficProfile.payload_kb}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              setBackendSimResult(null);
+                              setTrafficProfile((prev) => ({ ...prev, payload_kb: val }));
+                            }}
+                            className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-900 rounded-lg"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="text-slate-400">Net Latency</span>
+                            <span className="font-bold text-slate-200">
+                              {trafficProfile.network_latency_ms} ms
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min={1}
+                            max={100}
+                            step={1}
+                            value={trafficProfile.network_latency_ms}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              setBackendSimResult(null);
+                              setTrafficProfile((prev) => ({ ...prev, network_latency_ms: val }));
+                            }}
+                            className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-900 rounded-lg"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  /* ========================================================== */
+                  /* PHASE 6: CHAOS FAULT INJECTION CONTROLS                   */
+                  /* ========================================================== */
+                  <div className="space-y-3.5">
+                    {/* Chaos Mode Header Card */}
+                    <div className="p-3.5 rounded-2xl border border-rose-500/30 bg-rose-950/20 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1.5 rounded-lg bg-rose-500/20 text-rose-400 border border-rose-500/40">
+                            <Flame className="w-4 h-4 animate-pulse" />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-rose-300 font-mono uppercase tracking-wide">
+                              Chaos Engineering
+                            </h4>
+                            <p className="text-[10px] text-slate-400">
+                              Inject failures & inspect fault tolerance
+                            </p>
+                          </div>
+                        </div>
+                        {activeChaosFailure !== "NONE" && (
+                          <button
+                            onClick={() => handleTriggerChaos("HEAL_SYSTEM")}
+                            className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold transition flex items-center gap-1 shadow-sm"
+                          >
+                            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                            <span>Heal All</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Component Selector */}
+                      <div className="pt-2 border-t border-rose-500/20 flex items-center justify-between">
+                        <span className="text-[10px] text-slate-400 font-mono">Target:</span>
+                        <select
+                          value={chaosTargetNodeId || ""}
+                          onChange={(e) => {
+                            const val = e.target.value || null;
+                            setChaosTargetNodeId(val);
+                            if (activeChaosFailure !== "NONE") {
+                              handleTriggerChaos(activeChaosFailure, val || undefined);
+                            }
+                          }}
+                          className="bg-slate-900 border border-white/[0.1] rounded-lg px-2 py-1 text-[10px] text-slate-200 font-mono focus:outline-none focus:border-rose-500 max-w-[200px] truncate"
+                        >
+                          <option value="">Auto-Detect by Failure Type</option>
+                          {graphState.nodes.map((n) => (
+                            <option key={n.id} value={n.id}>
+                              {n.name} ({n.type})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Active Chaos Incident Card */}
+                    {activeChaosFailure !== "NONE" && activeSimulationResult.chaos_incident_report && (
+                      <div className="p-3.5 rounded-2xl border border-rose-500/60 bg-gradient-to-br from-rose-950/50 via-slate-950 to-slate-900 shadow-[0_0_25px_rgba(244,63,94,0.25)] space-y-3">
+                        <div className="flex items-center justify-between border-b border-rose-500/30 pb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping" />
+                            <span className="text-[10px] font-black uppercase tracking-wider text-rose-300 font-mono">
+                              Incident: {activeSimulationResult.chaos_incident_report.title}
+                            </span>
+                          </div>
+                          <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase font-mono bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                            {activeSimulationResult.chaos_incident_report.severity}
+                          </span>
+                        </div>
+
+                        {/* What Happened */}
+                        <div className="space-y-1">
+                          <div className="text-[10px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3 text-rose-400" />
+                            <span>What Happened?</span>
+                          </div>
+                          <p className="text-[10px] text-slate-300 font-light leading-relaxed bg-slate-900/80 p-2 rounded-lg border border-white/[0.05]">
+                            {activeSimulationResult.chaos_incident_report.what_happened}
+                          </p>
+                        </div>
+
+                        {/* Why It Happened */}
+                        <div className="space-y-1">
+                          <div className="text-[10px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1">
+                            <Info className="w-3 h-3 text-amber-400" />
+                            <span>Why It Happened?</span>
+                          </div>
+                          <p className="text-[10px] text-slate-300 font-light leading-relaxed bg-slate-900/80 p-2 rounded-lg border border-white/[0.05]">
+                            {activeSimulationResult.chaos_incident_report.why_it_happened}
+                          </p>
+                        </div>
+
+                        {/* Mitigation */}
+                        <div className="space-y-1">
+                          <div className="text-[10px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1">
+                            <ShieldCheck className="w-3 h-3 text-cyan-400" />
+                            <span>Recommended Mitigation</span>
+                          </div>
+                          <p className="text-[10px] text-cyan-200 font-light leading-relaxed bg-cyan-950/40 p-2 rounded-lg border border-cyan-500/30">
+                            {activeSimulationResult.chaos_incident_report.mitigation}
+                          </p>
+                        </div>
+
+                        <div className="pt-1">
+                          <button
+                            onClick={() => handleTriggerChaos("HEAL_SYSTEM")}
+                            className="w-full py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[10px] font-mono transition flex items-center justify-center gap-1.5 shadow-md"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Heal & Restore Healthy State</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Fault Scenarios Grid */}
+                    <div className="space-y-2">
+                      <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                        <span>Inject Fault Scenarios</span>
+                        <span className="text-[10px] text-rose-400 font-mono">8 Failure Modes</span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {/* 1. Kill Redis */}
                         <button
-                          key={preset.id}
-                          onClick={() => handleSelectPreset(preset)}
-                          className={`p-2 rounded-xl border text-left transition flex flex-col justify-between ${
-                            isSelected
-                              ? "border-cyan-400 bg-cyan-500/15 text-white ring-1 ring-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.2)]"
-                              : "border-white/[0.08] bg-slate-950/60 text-slate-400 hover:text-slate-200 hover:border-white/[0.15]"
+                          onClick={() => handleTriggerChaos("KILL_REDIS", chaosTargetNodeId || undefined)}
+                          className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
+                            activeChaosFailure === "KILL_REDIS"
+                              ? "border-rose-500 bg-rose-500/20 text-white ring-1 ring-rose-500/50 shadow-[0_0_15px_rgba(244,63,94,0.3)]"
+                              : "border-white/[0.08] bg-slate-950/60 text-slate-300 hover:border-rose-500/40 hover:bg-rose-950/10"
                           }`}
                         >
                           <div className="flex items-center justify-between w-full">
-                            <span className="text-[11px] font-bold truncate">{preset.name}</span>
-                            <span
-                              className={`text-[9px] font-mono px-1 py-0.2 rounded font-bold ${
-                                isSelected ? "bg-cyan-950 text-cyan-300" : "bg-white/[0.06] text-slate-400"
-                              }`}
-                            >
-                              {preset.badge}
+                            <span className="font-bold text-[11px] text-rose-300 flex items-center gap-1">
+                              <Database className="w-3 h-3 text-rose-400" /> Kill Redis
                             </span>
+                            <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-rose-950 text-rose-400">Cache</span>
                           </div>
-                          <p className="text-[9px] text-slate-400 line-clamp-1 mt-1 font-light">
-                            {preset.description}
+                          <p className="text-[9px] text-slate-400 mt-1 line-clamp-2">
+                            0% cache hits, thunderous DB stampede.
                           </p>
                         </button>
-                      );
-                    })}
-                  </div>
-                </div>
 
-                {/* 2. LIVE PARAMETER SLIDERS */}
-                <div className="p-3.5 rounded-2xl border border-white/[0.08] bg-slate-950/70 space-y-3">
-                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 uppercase tracking-wider">
-                    <span className="flex items-center gap-1.5">
-                      <Sliders className="w-3.5 h-3.5 text-cyan-400" />
-                      <span>Workload Controls</span>
-                    </span>
-                    <span className="text-[10px] text-cyan-400 font-normal">Realtime 60fps</span>
-                  </div>
+                        {/* 2. Kill DB */}
+                        <button
+                          onClick={() => handleTriggerChaos("KILL_POSTGRES", chaosTargetNodeId || undefined)}
+                          className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
+                            activeChaosFailure === "KILL_POSTGRES"
+                              ? "border-rose-500 bg-rose-500/20 text-white ring-1 ring-rose-500/50 shadow-[0_0_15px_rgba(244,63,94,0.3)]"
+                              : "border-white/[0.08] bg-slate-950/60 text-slate-300 hover:border-rose-500/40 hover:bg-rose-950/10"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="font-bold text-[11px] text-rose-300 flex items-center gap-1">
+                              <Database className="w-3 h-3 text-rose-400" /> Kill DB
+                            </span>
+                            <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-rose-950 text-rose-400">DB</span>
+                          </div>
+                          <p className="text-[9px] text-slate-400 mt-1 line-clamp-2">
+                            Primary DB down, 100% write failures.
+                          </p>
+                        </button>
 
-                  {/* Peak Target RPS Slider */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-slate-400">Peak Ingress RPS</span>
-                      <span className="font-bold text-cyan-300 font-mono">
-                        {trafficProfile.peak_qps.toLocaleString()} RPS
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min={5000}
-                      max={250000}
-                      step={5000}
-                      value={trafficProfile.peak_qps}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10);
-                        setBackendSimResult(null);
-                        setTrafficProfile((prev) => ({
-                          ...prev,
-                          peak_qps: val,
-                          base_qps: Math.round(val * 0.2),
-                        }));
-                      }}
-                      className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-900 rounded-lg"
-                    />
-                    <div className="flex justify-between text-[9px] text-slate-500 font-mono">
-                      <span>5K</span>
-                      <span>50K</span>
-                      <span>100K</span>
-                      <span>250K</span>
-                    </div>
-                  </div>
+                        {/* 3. Kill Kafka */}
+                        <button
+                          onClick={() => handleTriggerChaos("KILL_KAFKA", chaosTargetNodeId || undefined)}
+                          className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
+                            activeChaosFailure === "KILL_KAFKA"
+                              ? "border-rose-500 bg-rose-500/20 text-white ring-1 ring-rose-500/50 shadow-[0_0_15px_rgba(244,63,94,0.3)]"
+                              : "border-white/[0.08] bg-slate-950/60 text-slate-300 hover:border-rose-500/40 hover:bg-rose-950/10"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="font-bold text-[11px] text-rose-300 flex items-center gap-1">
+                              <Radio className="w-3 h-3 text-rose-400" /> Kill Kafka
+                            </span>
+                            <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-rose-950 text-rose-400">Queue</span>
+                          </div>
+                          <p className="text-[9px] text-slate-400 mt-1 line-clamp-2">
+                            Message broker down, buffer saturation.
+                          </p>
+                        </button>
 
-                  {/* Concurrent Users Slider */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-slate-400">Concurrent Users</span>
-                      <span className="font-bold text-cyan-300 font-mono">
-                        {trafficProfile.concurrent_users.toLocaleString()}
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min={10000}
-                      max={2000000}
-                      step={10000}
-                      value={trafficProfile.concurrent_users}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10);
-                        setBackendSimResult(null);
-                        setTrafficProfile((prev) => ({ ...prev, concurrent_users: val }));
-                      }}
-                      className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-900 rounded-lg"
-                    />
-                  </div>
+                        {/* 4. Kill App Server */}
+                        <button
+                          onClick={() => handleTriggerChaos("KILL_APP_SERVER", chaosTargetNodeId || undefined)}
+                          className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
+                            activeChaosFailure === "KILL_APP_SERVER"
+                              ? "border-rose-500 bg-rose-500/20 text-white ring-1 ring-rose-500/50 shadow-[0_0_15px_rgba(244,63,94,0.3)]"
+                              : "border-white/[0.08] bg-slate-950/60 text-slate-300 hover:border-rose-500/40 hover:bg-rose-950/10"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="font-bold text-[11px] text-rose-300 flex items-center gap-1">
+                              <Server className="w-3 h-3 text-rose-400" /> Crash Server
+                            </span>
+                            <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-rose-950 text-rose-400">Pod</span>
+                          </div>
+                          <p className="text-[9px] text-slate-400 mt-1 line-clamp-2">
+                            Node crash, load cascades to remaining pods.
+                          </p>
+                        </button>
 
-                  {/* Read / Write Ratio Slider */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-slate-400">Read / Write Ratio</span>
-                      <span className="font-bold font-mono">
-                        <span className="text-emerald-400">
-                          {Math.round(trafficProfile.read_ratio * 100)}% Read
-                        </span>
-                        <span className="text-slate-500"> / </span>
-                        <span className="text-rose-400">
-                          {Math.round((1 - trafficProfile.read_ratio) * 100)}% Write
-                        </span>
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0.05}
-                      max={0.99}
-                      step={0.05}
-                      value={trafficProfile.read_ratio}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value);
-                        setBackendSimResult(null);
-                        setTrafficProfile((prev) => ({ ...prev, read_ratio: val }));
-                      }}
-                      className="w-full accent-emerald-400 cursor-pointer h-1.5 bg-slate-900 rounded-lg"
-                    />
-                  </div>
+                        {/* 5. Latency Spike */}
+                        <button
+                          onClick={() => handleTriggerChaos("LATENCY_SPIKE", chaosTargetNodeId || undefined)}
+                          className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
+                            activeChaosFailure === "LATENCY_SPIKE"
+                              ? "border-amber-500 bg-amber-500/20 text-white ring-1 ring-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.3)]"
+                              : "border-white/[0.08] bg-slate-950/60 text-slate-300 hover:border-amber-500/40 hover:bg-amber-950/10"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="font-bold text-[11px] text-amber-300 flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-amber-400" /> +500ms Latency
+                            </span>
+                            <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-amber-950 text-amber-400">Lag</span>
+                          </div>
+                          <p className="text-[9px] text-slate-400 mt-1 line-clamp-2">
+                            Cross-region transit latency & queue backpressure.
+                          </p>
+                        </button>
 
-                  {/* Cache Hit Ratio Slider */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-slate-400">Cache Hit Ratio</span>
-                      <span className="font-bold text-rose-300 font-mono">
-                        {Math.round(trafficProfile.cache_hit_ratio * 100)}% Hit
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0.1}
-                      max={0.99}
-                      step={0.05}
-                      value={trafficProfile.cache_hit_ratio}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value);
-                        setBackendSimResult(null);
-                        setTrafficProfile((prev) => ({ ...prev, cache_hit_ratio: val }));
-                      }}
-                      className="w-full accent-rose-400 cursor-pointer h-1.5 bg-slate-900 rounded-lg"
-                    />
-                  </div>
+                        {/* 6. Drop Requests */}
+                        <button
+                          onClick={() => handleTriggerChaos("DROP_REQUESTS", chaosTargetNodeId || undefined)}
+                          className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
+                            activeChaosFailure === "DROP_REQUESTS"
+                              ? "border-amber-500 bg-amber-500/20 text-white ring-1 ring-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.3)]"
+                              : "border-white/[0.08] bg-slate-950/60 text-slate-300 hover:border-amber-500/40 hover:bg-amber-950/10"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="font-bold text-[11px] text-amber-300 flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3 text-amber-400" /> Drop 30%
+                            </span>
+                            <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-amber-950 text-amber-400">Loss</span>
+                          </div>
+                          <p className="text-[9px] text-slate-400 mt-1 line-clamp-2">
+                            Packet loss triggers aggressive retry storms.
+                          </p>
+                        </button>
 
-                  {/* Payload Size & Network Latency */}
-                  <div className="grid grid-cols-2 gap-3 pt-1">
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-[10px]">
-                        <span className="text-slate-400">Payload</span>
-                        <span className="font-bold text-slate-200">{trafficProfile.payload_kb} KB</span>
+                        {/* 7. DB Pool Exhaustion */}
+                        <button
+                          onClick={() => handleTriggerChaos("DB_OVERLOAD", chaosTargetNodeId || undefined)}
+                          className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
+                            activeChaosFailure === "DB_OVERLOAD"
+                              ? "border-rose-500 bg-rose-500/20 text-white ring-1 ring-rose-500/50 shadow-[0_0_15px_rgba(244,63,94,0.3)]"
+                              : "border-white/[0.08] bg-slate-950/60 text-slate-300 hover:border-rose-500/40 hover:bg-rose-950/10"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="font-bold text-[11px] text-rose-300 flex items-center gap-1">
+                              <Flame className="w-3 h-3 text-rose-400" /> DB Saturation
+                            </span>
+                            <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-rose-950 text-rose-400">Locks</span>
+                          </div>
+                          <p className="text-[9px] text-slate-400 mt-1 line-clamp-2">
+                            Pool exhausted, gateway 504 timeouts.
+                          </p>
+                        </button>
+
+                        {/* 8. Cache Cold-Start */}
+                        <button
+                          onClick={() => handleTriggerChaos("CACHE_FAILURE", chaosTargetNodeId || undefined)}
+                          className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
+                            activeChaosFailure === "CACHE_FAILURE"
+                              ? "border-amber-500 bg-amber-500/20 text-white ring-1 ring-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.3)]"
+                              : "border-white/[0.08] bg-slate-950/60 text-slate-300 hover:border-amber-500/40 hover:bg-amber-950/10"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="font-bold text-[11px] text-amber-300 flex items-center gap-1">
+                              <Cpu className="w-3 h-3 text-amber-400" /> Cold-Start
+                            </span>
+                            <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-amber-950 text-amber-400">Cold</span>
+                          </div>
+                          <p className="text-[9px] text-slate-400 mt-1 line-clamp-2">
+                            Key eviction wave & sudden query spike.
+                          </p>
+                        </button>
                       </div>
-                      <input
-                        type="range"
-                        min={1}
-                        max={50}
-                        step={1}
-                        value={trafficProfile.payload_kb}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value);
-                          setBackendSimResult(null);
-                          setTrafficProfile((prev) => ({ ...prev, payload_kb: val }));
-                        }}
-                        className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-900 rounded-lg"
-                      />
-                    </div>
 
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-[10px]">
-                        <span className="text-slate-400">Net Latency</span>
-                        <span className="font-bold text-slate-200">
-                          {trafficProfile.network_latency_ms} ms
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min={1}
-                        max={100}
-                        step={1}
-                        value={trafficProfile.network_latency_ms}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value);
-                          setBackendSimResult(null);
-                          setTrafficProfile((prev) => ({ ...prev, network_latency_ms: val }));
-                        }}
-                        className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-900 rounded-lg"
-                      />
+                      {/* Heal Button */}
+                      <button
+                        onClick={() => handleTriggerChaos("HEAL_SYSTEM")}
+                        className="w-full py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm mt-2"
+                      >
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <span>Heal Injected Faults & Restore Health</span>
+                      </button>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* 3. ESTIMATED METRICS TELEMETRY GRID */}
                 <div className="p-3.5 rounded-2xl border border-white/[0.08] bg-slate-950/70 space-y-3">
@@ -2939,10 +3486,11 @@ function SimulatorContent() {
             </div>
           ) : activeTab === "evaluation" ? (
             /* ============================================================== */
-            /* ARCHITECTURE EVALUATION PANEL                                 */
+            /* PHASE 8: ARCHITECTURE EVALUATION & VERSION DIFF PANEL          */
             /* ============================================================== */
-            <div className="flex-1 flex flex-col overflow-y-auto">
-              <div className="p-4 border-b border-white/[0.06] bg-slate-900/40 flex items-center justify-between">
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Header */}
+              <div className="p-4 border-b border-white/[0.06] bg-slate-900/40 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-2">
                   <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
                     <ShieldCheck className="w-4 h-4" />
@@ -2952,111 +3500,470 @@ function SimulatorContent() {
                       Architecture Evaluation
                     </h3>
                     <p className="text-[10px] text-slate-400 font-mono">
-                      Automated Invariant Scoring
+                      Invariant Scoring & Version Diff
                     </p>
                   </div>
                 </div>
+
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+                  v{graphState.metadata.version} Active
+                </span>
               </div>
 
-              <div className="p-4 space-y-4 font-mono text-xs">
-                {/* Health Score Hero Card */}
-                <div className="p-4 rounded-2xl border border-white/[0.08] bg-gradient-to-br from-slate-900/90 to-[#091224] shadow-lg space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
-                        Health Score
-                      </div>
-                      <div className="text-3xl font-black font-mono text-white mt-0.5">
-                        {validationResponse.health_score}{" "}
-                        <span className="text-xs text-slate-400">/ 100</span>
-                      </div>
-                    </div>
-                    <span
-                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase border ${
-                        validationResponse.status === "PASS"
-                          ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
-                          : validationResponse.status === "NEEDS_IMPROVEMENT"
-                          ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
-                          : "bg-red-500/20 text-red-300 border-red-500/40"
-                      }`}
-                    >
-                      {validationResponse.status.replace(/_/g, " ")}
-                    </span>
-                  </div>
+              {/* Sub-tab Navigation */}
+              <div className="flex border-b border-white/[0.08] bg-slate-950/70 p-1 shrink-0">
+                <button
+                  onClick={() => setEvaluationSubTab("verdict")}
+                  className={`flex-1 py-1.5 text-[11px] font-bold font-mono rounded-lg transition flex items-center justify-center gap-1.5 ${
+                    evaluationSubTab === "verdict"
+                      ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Scorecard & AI Verdict</span>
+                </button>
+                <button
+                  onClick={() => setEvaluationSubTab("history")}
+                  className={`flex-1 py-1.5 text-[11px] font-bold font-mono rounded-lg transition flex items-center justify-center gap-1.5 ${
+                    evaluationSubTab === "history"
+                      ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <History className="w-3.5 h-3.5 text-amber-400" />
+                  <span>History & Diff ({history.length})</span>
+                </button>
+              </div>
 
-                  <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-white/[0.06]">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        validationResponse.health_score >= 85
-                          ? "bg-gradient-to-r from-emerald-500 to-cyan-400"
-                          : validationResponse.health_score >= 60
-                          ? "bg-gradient-to-r from-amber-500 to-yellow-400"
-                          : "bg-gradient-to-r from-red-600 to-rose-400"
-                      }`}
-                      style={{ width: `${validationResponse.health_score}%` }}
-                    />
-                  </div>
-
-                  <p className="text-[11px] text-slate-300 font-light leading-relaxed">
-                    {validationResponse.summary}
-                  </p>
-                </div>
-
-                {/* Monthly Cost Card */}
-                <div className="p-3.5 rounded-2xl border border-white/[0.08] bg-slate-950/70 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="text-[11px] font-bold text-slate-300 uppercase">
-                      Estimated Cloud Cost
-                    </span>
-                  </div>
-                  <span className="text-xs font-bold text-emerald-400 font-mono">
-                    ${validationResponse.estimated_monthly_cost.toLocaleString()}/mo
-                  </span>
-                </div>
-
-                {/* Violations Summary */}
-                <div className="space-y-2">
-                  <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
-                    <span>Active Invariant Issues ({validationResponse.violations.length})</span>
-                  </div>
-                  {validationResponse.violations.length === 0 ? (
-                    <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-950/15 text-emerald-300 text-center text-[11px]">
-                      All first-principles system invariants are verified!
-                    </div>
-                  ) : (
-                    validationResponse.violations.slice(0, 4).map((v) => (
-                      <div
-                        key={v.rule_id}
-                        className="p-2.5 rounded-xl border border-white/[0.06] bg-slate-950/60 space-y-1"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-white">{v.rule_name}</span>
+              {/* Scrollable Evaluation Body */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-xs">
+                {evaluationSubTab === "verdict" ? (
+                  <>
+                    {/* Overall Score Card */}
+                    <div className="p-4 rounded-2xl border border-white/[0.08] bg-gradient-to-br from-slate-900/90 to-[#091224] shadow-lg space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                            Principal Architecture Score
+                          </div>
+                          <div className="text-3xl font-black font-mono text-white mt-0.5 flex items-baseline gap-2">
+                            <span>{comprehensiveEvaluation.overall_score}</span>
+                            <span className="text-xs text-slate-400 font-normal">/ 100</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
                           <span
-                            className={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase ${
-                              v.severity === "critical"
-                                ? "bg-red-950 text-red-400"
-                                : "bg-amber-950 text-amber-400"
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase border ${
+                              comprehensiveEvaluation.overall_score >= 85
+                                ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                                : comprehensiveEvaluation.overall_score >= 70
+                                ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/30"
+                                : comprehensiveEvaluation.overall_score >= 50
+                                ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                                : "bg-red-500/20 text-red-300 border-red-500/40"
                             }`}
                           >
-                            {v.severity}
+                            {comprehensiveEvaluation.ai_verdict.decision}
+                          </span>
+                          <span className="text-[9px] text-slate-400">
+                            {comprehensiveEvaluation.ai_verdict.level}
                           </span>
                         </div>
-                        <p className="text-[10px] text-slate-300 font-light line-clamp-2">
-                          {v.message}
-                        </p>
                       </div>
-                    ))
-                  )}
-                </div>
 
-                <button
-                  onClick={() => setShowValidationDrawer(true)}
-                  className="w-full py-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm"
-                >
-                  <ShieldCheck className="w-4 h-4 text-cyan-400" />
-                  <span>Open Full Rule Engine Drawer</span>
-                </button>
+                      {/* Progress bar */}
+                      <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-white/[0.06]">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            comprehensiveEvaluation.overall_score >= 80
+                              ? "bg-gradient-to-r from-emerald-500 to-cyan-400"
+                              : comprehensiveEvaluation.overall_score >= 60
+                              ? "bg-gradient-to-r from-amber-500 to-yellow-400"
+                              : "bg-gradient-to-r from-red-600 to-rose-400"
+                          }`}
+                          style={{ width: `${comprehensiveEvaluation.overall_score}%` }}
+                        />
+                      </div>
+
+                      <p className="text-[11px] text-slate-300 font-light leading-relaxed">
+                        {comprehensiveEvaluation.ai_verdict.summary}
+                      </p>
+                    </div>
+
+                    {/* 4 Category Dimension Score Meters */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="p-3 rounded-xl bg-slate-950/70 border border-white/[0.06] space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] text-slate-400">
+                          <span>Scalability</span>
+                          <span className="font-bold text-cyan-300 font-mono">
+                            {comprehensiveEvaluation.scalability_score}%
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                          <div
+                            className="bg-cyan-400 h-full rounded-full"
+                            style={{ width: `${comprehensiveEvaluation.scalability_score}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-slate-950/70 border border-white/[0.06] space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] text-slate-400">
+                          <span>Reliability</span>
+                          <span className="font-bold text-emerald-300 font-mono">
+                            {comprehensiveEvaluation.reliability_score}%
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                          <div
+                            className="bg-emerald-400 h-full rounded-full"
+                            style={{ width: `${comprehensiveEvaluation.reliability_score}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-slate-950/70 border border-white/[0.06] space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] text-slate-400">
+                          <span>Performance</span>
+                          <span className="font-bold text-violet-300 font-mono">
+                            {comprehensiveEvaluation.performance_score}%
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                          <div
+                            className="bg-violet-400 h-full rounded-full"
+                            style={{ width: `${comprehensiveEvaluation.performance_score}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-slate-950/70 border border-white/[0.06] space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] text-slate-400">
+                          <span>Cost Efficiency</span>
+                          <span className="font-bold text-amber-300 font-mono">
+                            {comprehensiveEvaluation.cost_score}%
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                          <div
+                            className="bg-amber-400 h-full rounded-full"
+                            style={{ width: `${comprehensiveEvaluation.cost_score}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Strong Architectural Decisions */}
+                    <div className="space-y-2">
+                      <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <CheckSquare className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Strong Architectural Decisions ({comprehensiveEvaluation.strong_decisions.length})</span>
+                      </div>
+                      <div className="space-y-1.5">
+                        {comprehensiveEvaluation.strong_decisions.map((sd, idx) => (
+                          <div
+                            key={idx}
+                            className="p-2.5 rounded-xl border border-emerald-500/20 bg-emerald-950/10 space-y-1"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-bold text-emerald-300">{sd.title}</span>
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-mono">
+                                Positive
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-300 font-light leading-relaxed">
+                              {sd.description}
+                            </p>
+                            <div className="text-[9px] text-emerald-400/90 font-mono pt-0.5">
+                              Impact: {sd.impact}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Weak Decisions & Architectural Risks */}
+                    <div className="space-y-2">
+                      <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+                        <span>Weak Decisions & Risks ({comprehensiveEvaluation.weak_decisions.length})</span>
+                      </div>
+                      {comprehensiveEvaluation.weak_decisions.length === 0 ? (
+                        <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-950/15 text-emerald-300 text-center text-[11px]">
+                          Zero critical single points of failure detected!
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {comprehensiveEvaluation.weak_decisions.map((wd, idx) => (
+                            <div
+                              key={idx}
+                              className={`p-2.5 rounded-xl border space-y-1 ${
+                                wd.severity === "critical"
+                                  ? "border-rose-500/30 bg-rose-950/15 text-rose-200"
+                                  : "border-amber-500/30 bg-amber-950/15 text-amber-200"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-bold">{wd.title}</span>
+                                <span
+                                  className={`text-[9px] font-bold uppercase px-1.5 py-0.2 rounded font-mono ${
+                                    wd.severity === "critical"
+                                      ? "bg-rose-950 text-rose-300 border border-rose-500/40"
+                                      : "bg-amber-950 text-amber-300 border border-amber-500/40"
+                                  }`}
+                                >
+                                  {wd.severity}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-slate-300 font-light leading-relaxed">
+                                {wd.risk}
+                              </p>
+                              <div className="text-[9px] text-cyan-300 font-mono pt-0.5">
+                                Fix: {wd.remediation}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Production Readiness Roadmap */}
+                    {comprehensiveEvaluation.ai_verdict.production_roadmap.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                          <Target className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>Production Readiness Roadmap</span>
+                        </div>
+                        <div className="p-3 rounded-xl bg-slate-950/70 border border-white/[0.06] space-y-1.5">
+                          {comprehensiveEvaluation.ai_verdict.production_roadmap.map((step, idx) => (
+                            <div key={idx} className="flex items-start gap-2 text-[10px] text-slate-300">
+                              <span className="text-cyan-400 font-bold shrink-0">{idx + 1}.</span>
+                              <span className="font-light leading-relaxed">{step}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Monthly Cost & Invariants drawer trigger */}
+                    <div className="p-3 rounded-xl border border-white/[0.08] bg-slate-950/70 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-[11px] font-bold text-slate-300 uppercase">
+                          Estimated Cloud Cost
+                        </span>
+                      </div>
+                      <span className="text-xs font-bold text-emerald-400 font-mono">
+                        ${validationResponse.estimated_monthly_cost.toLocaleString()}/mo
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={() => setShowValidationDrawer(true)}
+                      className="w-full py-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm"
+                    >
+                      <ShieldCheck className="w-4 h-4 text-cyan-400" />
+                      <span>Open Full Rule Engine Drawer</span>
+                    </button>
+                  </>
+                ) : (
+                  /* ========================================================== */
+                  /* PHASE 8: VERSION HISTORY TIMELINE & GRAPH DIFF COMPARATOR  */
+                  /* ========================================================== */
+                  <div className="space-y-4">
+                    {/* Version Diff Comparator Selectors */}
+                    <div className="p-3.5 rounded-2xl border border-white/[0.08] bg-slate-950/70 space-y-3">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                        <span className="flex items-center gap-1.5">
+                          <GitCompare className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>Version Comparator</span>
+                        </span>
+                        <span className="text-[10px] text-cyan-400 font-normal">
+                          v{diffBaseVersion} ➔ v{diffTargetVersion}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[9px] text-slate-400 font-mono uppercase block mb-1">
+                            Base Version (Left)
+                          </label>
+                          <select
+                            value={diffBaseVersion}
+                            onChange={(e) => setDiffBaseVersion(Number(e.target.value))}
+                            className="w-full bg-slate-900 border border-white/[0.1] rounded-lg px-2 py-1.5 text-[10px] text-white font-mono focus:outline-none focus:border-cyan-500"
+                          >
+                            {history.map((h) => (
+                              <option key={h.metadata.version} value={h.metadata.version}>
+                                v{h.metadata.version} ({h.nodes.length} nodes)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[9px] text-slate-400 font-mono uppercase block mb-1">
+                            Target Version (Right)
+                          </label>
+                          <select
+                            value={diffTargetVersion}
+                            onChange={(e) => setDiffTargetVersion(Number(e.target.value))}
+                            className="w-full bg-slate-900 border border-white/[0.1] rounded-lg px-2 py-1.5 text-[10px] text-white font-mono focus:outline-none focus:border-cyan-500"
+                          >
+                            {history.map((h) => (
+                              <option key={h.metadata.version} value={h.metadata.version}>
+                                v{h.metadata.version} ({h.nodes.length} nodes)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Diff Result Summary */}
+                      {versionDiffResult && (
+                        <div className="pt-2 border-t border-white/[0.06] space-y-2">
+                          <div className="p-2 rounded-lg bg-slate-900/80 border border-white/[0.05] text-[10px] text-cyan-300 font-mono">
+                            {versionDiffResult.summary}
+                          </div>
+
+                          {/* Node Diffs */}
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-slate-400 uppercase tracking-wider font-bold">
+                              Component Changes ({versionDiffResult.nodes.length})
+                            </span>
+                            {versionDiffResult.nodes.length === 0 ? (
+                              <div className="text-[10px] text-slate-500 italic py-1">
+                                No component changes between these versions.
+                              </div>
+                            ) : (
+                              <div className="space-y-1 max-h-48 overflow-y-auto">
+                                {versionDiffResult.nodes.map((nd) => (
+                                  <div
+                                    key={nd.id}
+                                    className={`p-2 rounded-lg border flex items-center justify-between text-[10px] ${
+                                      nd.changeType === "ADDED"
+                                        ? "border-emerald-500/30 bg-emerald-950/20 text-emerald-300"
+                                        : nd.changeType === "REMOVED"
+                                        ? "border-rose-500/30 bg-rose-950/20 text-rose-300"
+                                        : "border-amber-500/30 bg-amber-950/20 text-amber-300"
+                                    }`}
+                                  >
+                                    <div className="min-w-0 pr-2">
+                                      <div className="font-bold truncate">{nd.name}</div>
+                                      <div className="text-[9px] opacity-75">Type: {nd.type}</div>
+                                    </div>
+                                    <span
+                                      className={`px-1.5 py-0.2 rounded text-[9px] font-bold font-mono uppercase ${
+                                        nd.changeType === "ADDED"
+                                          ? "bg-emerald-950 text-emerald-400"
+                                          : nd.changeType === "REMOVED"
+                                          ? "bg-rose-950 text-rose-400"
+                                          : "bg-amber-950 text-amber-400"
+                                      }`}
+                                    >
+                                      {nd.changeType}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Edge Diffs */}
+                          <div className="space-y-1 pt-1">
+                            <span className="text-[9px] text-slate-400 uppercase tracking-wider font-bold">
+                              Connection Changes ({versionDiffResult.edges.length})
+                            </span>
+                            {versionDiffResult.edges.length === 0 ? (
+                              <div className="text-[10px] text-slate-500 italic py-1">
+                                No connection changes between these versions.
+                              </div>
+                            ) : (
+                              <div className="space-y-1 max-h-36 overflow-y-auto">
+                                {versionDiffResult.edges.map((ed) => (
+                                  <div
+                                    key={ed.id}
+                                    className={`p-1.5 rounded-lg border flex items-center justify-between text-[9px] ${
+                                      ed.changeType === "ADDED"
+                                        ? "border-emerald-500/30 bg-emerald-950/20 text-emerald-300"
+                                        : "border-rose-500/30 bg-rose-950/20 text-rose-300"
+                                    }`}
+                                  >
+                                    <span className="truncate">
+                                      {ed.source} ➔ {ed.target}
+                                    </span>
+                                    <span className="font-mono font-bold uppercase">{ed.changeType}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Version History Timeline */}
+                    <div className="space-y-2">
+                      <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          <History className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Version Snapshots ({history.length})</span>
+                        </span>
+                        <span className="text-[10px] text-slate-500">Auto-Snapshotted</span>
+                      </div>
+
+                      <div className="space-y-2">
+                        {history.map((snapshot) => {
+                          const isCurrent = snapshot.metadata.version === graphState.metadata.version;
+                          return (
+                            <div
+                              key={snapshot.metadata.version}
+                              className={`p-3 rounded-xl border transition ${
+                                isCurrent
+                                  ? "border-cyan-500/50 bg-cyan-950/20 ring-1 ring-cyan-500/30"
+                                  : "border-white/[0.08] bg-slate-950/60 hover:border-white/[0.15]"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold text-[10px] font-mono ${
+                                      isCurrent
+                                        ? "bg-cyan-500 text-slate-950"
+                                        : "bg-slate-900 text-slate-300 border border-white/[0.1]"
+                                    }`}
+                                  >
+                                    v{snapshot.metadata.version}
+                                  </span>
+                                  <div>
+                                    <div className="font-bold text-[11px] text-slate-200">
+                                      {snapshot.metadata.change_summary || "Architecture Snapshot"}
+                                    </div>
+                                    <div className="text-[9px] text-slate-400">
+                                      {snapshot.metadata.last_event_type} • {snapshot.nodes.length} nodes, {snapshot.edges.length} edges
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {!isCurrent && (
+                                  <button
+                                    onClick={() => handleRestoreVersion(snapshot.metadata.version)}
+                                    className="px-2 py-1 rounded-lg bg-slate-900 hover:bg-cyan-500/20 border border-white/[0.1] hover:border-cyan-500/40 text-[10px] text-slate-300 hover:text-cyan-300 font-mono transition flex items-center gap-1 shadow-sm"
+                                    title={`Restore canvas to version ${snapshot.metadata.version}`}
+                                  >
+                                    <RotateCcw className="w-3 h-3" />
+                                    <span>Restore</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ) : activeNode ? (
@@ -4072,6 +4979,400 @@ function SimulatorContent() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================== */}
+      {/* PHASE 7: SOCRATIC SYSTEM DESIGN INTERVIEW MODAL / DRAWER          */}
+      {/* ================================================================== */}
+      {showInterviewModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-6 animate-fadeIn">
+          <div className="w-full max-w-6xl h-[92vh] bg-[#070c18] border border-white/[0.12] rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-white/[0.08] bg-slate-900/60 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-violet-500/15 text-violet-400 border border-violet-500/30">
+                  <MessageSquare className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-white font-mono uppercase tracking-wider">
+                      Socratic System Design Interviewer
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-violet-500/20 text-violet-300 border border-violet-500/30">
+                      Staff / Principal Architect Round
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 font-mono">
+                    Stage {interviewStage} of 9: {INTERVIEW_STAGES[interviewStage - 1]?.title}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleRestartInterview}
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-white/[0.1] text-slate-300 hover:text-white text-xs font-mono transition flex items-center gap-1.5"
+                  title="Reset Interview Session"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Reset Session</span>
+                </button>
+                <button
+                  onClick={() => setShowInterviewModal(false)}
+                  className="p-1.5 rounded-xl bg-slate-900 hover:bg-white/[0.08] text-slate-400 hover:text-white border border-white/[0.1] transition"
+                  title="Close Interview Drawer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* 9-Stage Progress Stepper */}
+            <div className="px-6 py-3 border-b border-white/[0.06] bg-slate-950/60 shrink-0">
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-mono scrollbar-none">
+                {INTERVIEW_STAGES.map((stg) => {
+                  const isCurrent = stg.stage === interviewStage;
+                  const isPast = stg.stage < interviewStage;
+                  return (
+                    <button
+                      key={stg.stage}
+                      onClick={() => setInterviewStage(stg.stage)}
+                      className={`px-3 py-1 rounded-xl shrink-0 transition flex items-center gap-1.5 text-[11px] ${
+                        isCurrent
+                          ? "bg-violet-500/25 border border-violet-500/50 text-violet-200 font-bold shadow-[0_0_12px_rgba(139,92,246,0.3)]"
+                          : isPast
+                          ? "bg-emerald-950/40 border border-emerald-500/30 text-emerald-300"
+                          : "bg-slate-900/60 border border-white/[0.06] text-slate-400 hover:text-slate-300"
+                      }`}
+                    >
+                      {isPast ? (
+                        <Check className="w-3 h-3 text-emerald-400" />
+                      ) : (
+                        <span className="w-3.5 h-3.5 rounded-full bg-slate-800 text-[9px] flex items-center justify-center font-bold">
+                          {stg.stage}
+                        </span>
+                      )}
+                      <span>{stg.title.split(" ")[0]}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Stage Goal description banner */}
+              <div className="mt-2 text-[11px] font-mono text-slate-300 bg-slate-900/50 px-3 py-1.5 rounded-xl border border-white/[0.05] flex items-center justify-between">
+                <span className="truncate pr-2">
+                  <strong className="text-violet-300">Target Deliverable:</strong> {INTERVIEW_STAGES[interviewStage - 1]?.description}
+                </span>
+                <span className="text-[10px] text-slate-400 shrink-0">
+                  {interviewMessages.length} turns exchanged
+                </span>
+              </div>
+            </div>
+
+            {/* Main Content: Two Columns */}
+            <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+              {/* Left Column: Chat Dialogue (65% width) */}
+              <div className="flex-1 flex flex-col border-r border-white/[0.06] overflow-hidden">
+                {/* Chat Message Stream */}
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 font-mono text-xs">
+                  {interviewMessages.map((msg) => {
+                    const isInterviewer = msg.sender === "interviewer";
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`flex gap-3 ${isInterviewer ? "justify-start" : "justify-end"}`}
+                      >
+                        {isInterviewer && (
+                          <div className="w-8 h-8 rounded-xl bg-violet-500/20 border border-violet-500/40 text-violet-300 flex items-center justify-center shrink-0 mt-0.5">
+                            {msg.is_hint ? (
+                              <Lightbulb className="w-4 h-4 text-amber-400" />
+                            ) : (
+                              <Bot className="w-4 h-4" />
+                            )}
+                          </div>
+                        )}
+
+                        <div
+                          className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 space-y-2 ${
+                            msg.is_hint
+                              ? "bg-amber-950/30 border border-amber-500/30 text-amber-100"
+                              : isInterviewer
+                              ? "bg-slate-900/90 border border-white/[0.08] text-slate-200 shadow-md"
+                              : "bg-cyan-950/40 border border-cyan-500/30 text-cyan-100 shadow-md"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2 border-b border-white/[0.06] pb-1 text-[10px]">
+                            <span className="font-bold text-slate-400 uppercase tracking-wider">
+                              {msg.is_hint
+                                ? "Staff Architect Hint"
+                                : isInterviewer
+                                ? "Interviewer (Staff L6+)"
+                                : "Candidate (You)"}
+                            </span>
+                            <span className="text-slate-500">{msg.timestamp}</span>
+                          </div>
+
+                          <div className="text-xs font-light leading-relaxed whitespace-pre-wrap">
+                            {msg.text}
+                          </div>
+
+                          {msg.feedback && (
+                            <div className="mt-2 pt-2 border-t border-violet-500/20 text-[10px] text-violet-300/90 font-mono bg-violet-950/20 p-2 rounded-lg">
+                              <strong className="text-violet-400">Feedback:</strong> {msg.feedback}
+                            </div>
+                          )}
+                        </div>
+
+                        {!isInterviewer && (
+                          <div className="w-8 h-8 rounded-xl bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 flex items-center justify-center shrink-0 mt-0.5 font-bold text-xs">
+                            You
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Thinking / Evaluating Indicator */}
+                  {isInterviewCritiqueLoading && (
+                    <div className="flex gap-3 justify-start">
+                      <div className="w-8 h-8 rounded-xl bg-violet-500/20 border border-violet-500/40 text-violet-300 flex items-center justify-center shrink-0">
+                        <Bot className="w-4 h-4 animate-pulse" />
+                      </div>
+                      <div className="bg-slate-900/90 border border-white/[0.08] rounded-2xl p-3 flex items-center gap-2 text-xs text-violet-300">
+                        <span className="w-2 h-2 rounded-full bg-violet-400 animate-ping" />
+                        <span>Staff Architect is analyzing your response and canvas components...</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Input Footer */}
+                <div className="p-4 border-t border-white/[0.08] bg-slate-900/40 space-y-2 shrink-0">
+                  <div className="flex gap-2">
+                    <textarea
+                      value={interviewInput}
+                      onChange={(e) => setInterviewInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendInterviewTurn();
+                        }
+                      }}
+                      placeholder={`Explain your ${INTERVIEW_STAGES[interviewStage - 1]?.title.toLowerCase()} (e.g. math, APIs, data schemas, partitions, caches)... [Enter to send]`}
+                      rows={2}
+                      className="flex-1 bg-slate-950 border border-white/[0.1] focus:border-violet-500/50 rounded-xl p-2.5 text-xs font-mono text-white placeholder-slate-500 focus:outline-none resize-none"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs font-mono">
+                    <button
+                      onClick={handleRequestInterviewHint}
+                      className="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 font-bold transition flex items-center gap-1.5 shadow-sm text-[11px]"
+                      title="Request a hint from the Staff Architect"
+                    >
+                      <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Ask Staff Hint</span>
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-slate-500 hidden sm:inline">
+                        Shift+Enter for newline
+                      </span>
+                      <button
+                        onClick={handleSendInterviewTurn}
+                        disabled={!interviewInput.trim() || isInterviewCritiqueLoading}
+                        className="px-4 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:hover:bg-violet-600 text-white font-bold transition flex items-center gap-1.5 shadow-lg shadow-violet-600/25 text-[11px]"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Submit Response</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: Live Rubric Scorecard & Architecture Coupling (35% width) */}
+              <div className="w-full md:w-80 lg:w-96 bg-slate-950/50 p-4 space-y-4 font-mono text-xs overflow-y-auto">
+                {/* Rubric Score Card */}
+                <div className="p-4 rounded-2xl border border-white/[0.08] bg-slate-900/80 space-y-3 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                        Overall Interview Score
+                      </div>
+                      <div className="text-2xl font-black text-white mt-0.5">
+                        {computeOverallRubricPercentage(interviewScores)}%
+                      </div>
+                    </div>
+                    <span
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                        computeOverallRubricPercentage(interviewScores) >= 80
+                          ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                          : computeOverallRubricPercentage(interviewScores) >= 60
+                          ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/30"
+                          : computeOverallRubricPercentage(interviewScores) >= 40
+                          ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                          : "bg-red-500/15 text-red-300 border-red-500/30"
+                      }`}
+                    >
+                      {computeOverallRubricPercentage(interviewScores) >= 80
+                        ? "Strong Hire"
+                        : computeOverallRubricPercentage(interviewScores) >= 60
+                        ? "Hire"
+                        : computeOverallRubricPercentage(interviewScores) >= 40
+                        ? "Leaning Hire"
+                        : "Needs Work"}
+                    </span>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-white/[0.06]">
+                    <div
+                      className="bg-gradient-to-r from-violet-500 to-cyan-400 h-full rounded-full transition-all duration-500"
+                      style={{ width: `${computeOverallRubricPercentage(interviewScores)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* 7 Rubric Category Bars */}
+                <div className="p-3.5 rounded-2xl border border-white/[0.08] bg-slate-900/60 space-y-2.5">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    7-Category Staff Rubric
+                  </div>
+
+                  {/* 1. Requirements */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="text-slate-400">Requirements & Scope</span>
+                      <span className="font-bold text-slate-200">
+                        {interviewScores.requirements_understanding} / 10
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className="bg-violet-400 h-full rounded-full transition-all duration-300"
+                        style={{ width: `${(interviewScores.requirements_understanding / 10) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 2. Scale Estimation */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="text-slate-400">Scale Math & Capacity</span>
+                      <span className="font-bold text-slate-200">
+                        {interviewScores.scale_estimation} / 10
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className="bg-cyan-400 h-full rounded-full transition-all duration-300"
+                        style={{ width: `${(interviewScores.scale_estimation / 10) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 3. High-Level Architecture */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="text-slate-400">High-Level Architecture</span>
+                      <span className="font-bold text-slate-200">
+                        {interviewScores.architecture} / 10
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className="bg-emerald-400 h-full rounded-full transition-all duration-300"
+                        style={{ width: `${(interviewScores.architecture / 10) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 4. Technical Trade-offs */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="text-slate-400">Technical Trade-offs</span>
+                      <span className="font-bold text-slate-200">
+                        {interviewScores.trade_offs} / 10
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className="bg-amber-400 h-full rounded-full transition-all duration-300"
+                        style={{ width: `${(interviewScores.trade_offs / 10) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 5. Scalability */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="text-slate-400">Scalability & Sharding</span>
+                      <span className="font-bold text-slate-200">
+                        {interviewScores.scalability} / 10
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className="bg-sky-400 h-full rounded-full transition-all duration-300"
+                        style={{ width: `${(interviewScores.scalability / 10) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 6. Reliability */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="text-slate-400">Fault Tolerance & SRE</span>
+                      <span className="font-bold text-slate-200">
+                        {interviewScores.reliability} / 10
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className="bg-rose-400 h-full rounded-full transition-all duration-300"
+                        style={{ width: `${(interviewScores.reliability / 10) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 7. Communication */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="text-slate-400">Communication & Structure</span>
+                      <span className="font-bold text-slate-200">
+                        {interviewScores.communication} / 10
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className="bg-indigo-400 h-full rounded-full transition-all duration-300"
+                        style={{ width: `${(interviewScores.communication / 10) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Architecture Canvas Coupling Banner */}
+                <div className="p-3.5 rounded-2xl border border-white/[0.08] bg-slate-900/60 space-y-2">
+                  <div className="flex items-center gap-2 text-cyan-300">
+                    <Workflow className="w-4 h-4 text-cyan-400" />
+                    <span className="font-bold text-[11px] uppercase">Live Canvas Coupling</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-relaxed font-light">
+                    The Socratic interviewer inspects your canvas topology in real time. Drag, connect, and configure components to support your explanations.
+                  </p>
+                  <div className="pt-1 flex items-center justify-between text-[10px] text-slate-300 border-t border-white/[0.06]">
+                    <span>Components on Canvas:</span>
+                    <span className="font-bold text-cyan-300 font-mono">
+                      {graphState.nodes.length} Nodes • {graphState.edges.length} Edges
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
