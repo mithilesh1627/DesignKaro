@@ -631,7 +631,7 @@ const INITIAL_YOUTUBE_GRAPH: ArchitectureGraph = {
       type: "client",
       name: "Video Viewers",
       category: "networking",
-      position: { x: 50, y: 180 },
+      position: { x: 80, y: 220 },
       config: { replicas: 1, qps_capacity: 50000, latency_ms: 1 },
     },
     {
@@ -639,7 +639,7 @@ const INITIAL_YOUTUBE_GRAPH: ArchitectureGraph = {
       type: "api_gateway",
       name: "API Gateway",
       category: "networking",
-      position: { x: 280, y: 180 },
+      position: { x: 380, y: 220 },
       config: { replicas: 3, qps_capacity: 30000, latency_ms: 2 },
     },
     {
@@ -647,7 +647,7 @@ const INITIAL_YOUTUBE_GRAPH: ArchitectureGraph = {
       type: "load_balancer",
       name: "Load Balancer",
       category: "networking",
-      position: { x: 510, y: 180 },
+      position: { x: 680, y: 220 },
       config: { replicas: 2, qps_capacity: 35000, latency_ms: 2 },
     },
     {
@@ -655,7 +655,7 @@ const INITIAL_YOUTUBE_GRAPH: ArchitectureGraph = {
       type: "server",
       name: "App Streaming Cluster",
       category: "compute",
-      position: { x: 740, y: 180 },
+      position: { x: 980, y: 220 },
       config: { replicas: 6, qps_capacity: 15000, latency_ms: 6, memory_gb: 32 },
     },
     {
@@ -663,7 +663,7 @@ const INITIAL_YOUTUBE_GRAPH: ArchitectureGraph = {
       type: "redis",
       name: "Metadata Cache",
       category: "cache",
-      position: { x: 990, y: 80 },
+      position: { x: 1320, y: 100 },
       config: { replicas: 3, qps_capacity: 50000, latency_ms: 1, memory_gb: 64, cache_policy: "LRU" },
     },
     {
@@ -671,7 +671,7 @@ const INITIAL_YOUTUBE_GRAPH: ArchitectureGraph = {
       type: "postgresql",
       name: "Metadata DB",
       category: "database",
-      position: { x: 990, y: 280 },
+      position: { x: 1320, y: 340 },
       config: { replicas: 2, qps_capacity: 8000, latency_ms: 12, storage_gb: 1000 },
     },
   ],
@@ -1759,6 +1759,86 @@ function SimulatorContent() {
     }
   }, [history, showToast]);
 
+  // Auto-decluster and space out nodes into clean logical architecture lanes
+  const handleDeClusterCanvas = useCallback(() => {
+    if (graphState.nodes.length === 0) return;
+
+    const tierMap: Record<string, number> = {
+      client: 0,
+      dns: 0,
+      cdn: 1,
+      api_gateway: 1,
+      gateway: 1,
+      load_balancer: 2,
+      server: 3,
+      microservice: 3,
+      worker: 3,
+      cache: 4,
+      redis: 4,
+      memcached: 4,
+      queue: 4,
+      kafka: 4,
+      rabbitmq: 4,
+      database: 5,
+      postgresql: 5,
+      mysql: 5,
+      mongodb: 5,
+      cassandra: 5,
+      object_storage: 5,
+      block_storage: 5,
+    };
+
+    const tierNodes: Record<number, ArchitectureNode[]> = {
+      0: [],
+      1: [],
+      2: [],
+      3: [],
+      4: [],
+      5: [],
+    };
+
+    graphState.nodes.forEach((n) => {
+      const tier = tierMap[n.type] ?? (tierMap[n.category] ?? 3);
+      if (!tierNodes[tier]) tierNodes[tier] = [];
+      tierNodes[tier].push(n);
+    });
+
+    const startX = 80;
+    const tierSpacingX = 320;
+    const nodeSpacingY = 170;
+    const baseY = 220;
+
+    const newNodes = graphState.nodes.map((n) => {
+      const tier = tierMap[n.type] ?? (tierMap[n.category] ?? 3);
+      const listInTier = tierNodes[tier] || [];
+      const indexInTier = listInTier.findIndex((item) => item.id === n.id);
+      const totalInTier = listInTier.length;
+
+      const posX = startX + tier * tierSpacingX;
+      const posY = baseY + (indexInTier - (totalInTier - 1) / 2) * nodeSpacingY;
+
+      return {
+        ...n,
+        position: { x: posX, y: Math.max(60, Math.round(posY)) },
+      };
+    });
+
+    commitGraphChange(
+      (prev) => ({
+        ...prev,
+        nodes: newNodes,
+      }),
+      "AUTO_LAYOUT",
+      "De-clustered canvas and aligned into clean architectural tiers"
+    );
+
+    showToast("🪄 Canvas de-clustered & organized into clean tiers!");
+
+    setTimeout(() => {
+      reactFlowInstance.fitView({ padding: 0.25, duration: 400 });
+    }, 50);
+  }, [graphState.nodes, commitGraphChange, showToast, reactFlowInstance]);
+
 
   // Node Drag on Canvas
   const onNodesChange = useCallback((changes: any) => {
@@ -1845,12 +1925,12 @@ function SimulatorContent() {
   return (
     <div className="flex flex-col h-screen w-full overflow-hidden bg-[#050914] text-slate-200">
       {/* ==================================================================== */}
-      {/* TOP BAR — DEVELOPER TOOL HEADER                                      */}
+      {/* TOP BAR — DE-CLUSTERED DEVELOPER TOOL HEADER                         */}
       {/* ==================================================================== */}
-      <header className="h-14 border-b border-white/[0.08] bg-[#070d1a]/95 backdrop-blur-xl px-4 sm:px-6 flex items-center justify-between gap-4 shrink-0 z-40">
-        {/* Left: Brand & Problem Title */}
-        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-          <Link href="/" className="flex items-center gap-2 group shrink-0">
+      <header className="h-14 border-b border-white/[0.08] bg-[#070d1a]/95 backdrop-blur-xl px-4 lg:px-6 flex items-center justify-between gap-4 shrink-0 z-40 select-none">
+        {/* ==================== ZONE 1: BRAND & CONTEXT (LEFT) ==================== */}
+        <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+          <Link href="/" className="flex items-center gap-2 group">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-indigo-600 p-[1px] shadow-md shadow-cyan-500/20">
               <div className="w-full h-full bg-[#050914] rounded-[7px] flex items-center justify-center">
                 <Layers className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform" />
@@ -1860,89 +1940,82 @@ function SimulatorContent() {
               <span className="text-sm font-bold tracking-tight text-white font-display leading-tight">
                 Design<span className="text-cyan-400">Karo</span>
               </span>
-              <span className="text-[9px] font-mono text-cyan-400 uppercase tracking-widest">
+              <span className="text-[9px] font-mono text-cyan-400/80 uppercase tracking-widest">
                 Simulator v2
               </span>
             </div>
           </Link>
 
-          <div className="h-5 w-[1px] bg-white/[0.08] hidden sm:block" />
+          <div className="h-4 w-[1px] bg-white/[0.1] hidden sm:block" />
 
-          {/* Problem Pill */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] text-xs font-mono text-white">
-            <span className="text-slate-400 font-normal">Problem:</span>
-            <span className="font-bold text-cyan-300">{graphState.metadata.title}</span>
+          {/* Problem Indicator */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-white/[0.08] bg-white/[0.02] text-xs font-mono">
+            <span className="text-slate-500 text-[11px] hidden md:inline">Problem:</span>
+            <span className="font-semibold text-cyan-300 tracking-tight truncate max-w-[140px] sm:max-w-[180px]">
+              {graphState.metadata.title}
+            </span>
           </div>
 
-          {/* Graph Status Pill with Live Deterministic Health Score */}
+          {/* Unified Sleek Telemetry Badge */}
           <button
-            onClick={() => setShowValidationDrawer(true)}
-            className={`hidden md:flex items-center gap-2 px-2.5 py-1 rounded-lg border text-xs font-mono transition ${
+            onClick={() => {
+              setActiveTab("evaluation");
+              setShowValidationDrawer(true);
+            }}
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/[0.15] text-xs font-mono transition group"
+            title={`System Health: ${validationResponse.health_score}% | Est. Cost: $${validationResponse.estimated_monthly_cost.toLocaleString()}/mo — Click to inspect`}
+          >
+            <span className={`w-2 h-2 rounded-full ${
               validationResponse.status === "PASS"
-                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
+                ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)]"
                 : validationResponse.status === "NEEDS_IMPROVEMENT"
-                ? "border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
-                : "border-red-500/40 bg-red-500/15 text-red-300 hover:bg-red-500/25 animate-pulse"
-            }`}
-            title="Inspect Deterministic Rule Engine Violations & Invariants"
-          >
-            {validationResponse.status === "PASS" ? (
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-            ) : validationResponse.status === "NEEDS_IMPROVEMENT" ? (
-              <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
-            ) : (
-              <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
-            )}
-            <span className="font-bold">{validationResponse.health_score}%</span>
-            <span className="text-[10px] text-slate-400">
-              {validationResponse.violations.length === 0
-                ? "Clean"
-                : `${validationResponse.violations.length} Issues`}
+                ? "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.7)]"
+                : "bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.7)] animate-pulse"
+            }`} />
+            <span className="font-semibold text-slate-200 group-hover:text-white">
+              {validationResponse.health_score}%
             </span>
-          </button>
-
-          {/* Monthly Cost Badge */}
-          <button
-            onClick={() => setShowValidationDrawer(true)}
-            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.05] text-xs font-mono text-slate-300 transition"
-            title="Estimated Monthly Cloud Infrastructure Cost"
-          >
-            <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
-            <span>${validationResponse.estimated_monthly_cost.toLocaleString()}/mo</span>
+            <span className="text-slate-400 text-[10px] hidden min-[1700px]:inline">
+              {validationResponse.status === "PASS" ? "Clean" : "Issues"}
+            </span>
+            <span className="text-white/20 hidden min-[1700px]:inline">|</span>
+            <span className="text-slate-400 hidden min-[1700px]:flex items-center gap-0.5">
+              ${validationResponse.estimated_monthly_cost.toLocaleString()}/mo
+            </span>
           </button>
         </div>
 
-        {/* Center: Stage Pills */}
-        <div className="hidden xl:flex items-center gap-1 p-1 rounded-xl bg-slate-950/80 border border-white/[0.08] text-xs font-mono">
+        {/* ==================== ZONE 2: WORKFLOW STAGES (CENTER) ==================== */}
+        <nav className="hidden md:flex items-center p-0.5 rounded-xl bg-slate-950/90 border border-white/[0.08] shadow-inner text-xs font-mono">
           <button
             onClick={() => setActiveTab("requirements")}
-            className={`px-3 py-1 rounded-lg transition ${
+            className={`px-3 py-1 rounded-lg transition-all font-medium ${
               activeTab === "requirements"
-                ? "bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 font-semibold shadow-[0_0_12px_rgba(6,182,212,0.2)]"
-                : "text-slate-400 hover:text-white"
+                ? "bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 font-semibold shadow-[0_0_12px_rgba(6,182,212,0.25)]"
+                : "text-slate-400 hover:text-white border border-transparent"
             }`}
           >
             Requirements
           </button>
           <button
             onClick={() => setActiveTab("architecture")}
-            className={`px-3 py-1 rounded-lg transition ${
+            className={`px-3 py-1 rounded-lg transition-all font-medium ${
               activeTab === "architecture"
-                ? "bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 font-semibold shadow-[0_0_12px_rgba(6,182,212,0.2)]"
-                : "text-slate-400 hover:text-white"
+                ? "bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 font-semibold shadow-[0_0_12px_rgba(6,182,212,0.25)]"
+                : "text-slate-400 hover:text-white border border-transparent"
             }`}
           >
             Architecture
           </button>
           <button
             onClick={() => setActiveTab("simulation")}
-            className={`px-3 py-1 rounded-lg transition flex items-center gap-1.5 ${
+            className={`px-3 py-1 rounded-lg transition-all font-medium flex items-center gap-1.5 ${
               activeTab === "simulation"
-                ? "bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 font-semibold shadow-[0_0_12px_rgba(6,182,212,0.2)]"
-                : "text-slate-400 hover:text-white"
+                ? "bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 font-semibold shadow-[0_0_12px_rgba(6,182,212,0.25)]"
+                : "text-slate-400 hover:text-white border border-transparent"
             }`}
           >
-            <Activity className="w-3 h-3 text-cyan-400" />
+            <Activity className="w-3.5 h-3.5 text-cyan-400" />
             <span>Simulation</span>
             {activeSimulationResult.bottleneck_node_id && (
               <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
@@ -1950,39 +2023,40 @@ function SimulatorContent() {
           </button>
           <button
             onClick={() => setActiveTab("evaluation")}
-            className={`px-3 py-1 rounded-lg transition flex items-center gap-1.5 ${
+            className={`px-3 py-1 rounded-lg transition-all font-medium flex items-center gap-1.5 ${
               activeTab === "evaluation"
-                ? "bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 font-semibold shadow-[0_0_12px_rgba(6,182,212,0.2)]"
-                : "text-slate-400 hover:text-white"
+                ? "bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 font-semibold shadow-[0_0_12px_rgba(6,182,212,0.25)]"
+                : "text-slate-400 hover:text-white border border-transparent"
             }`}
           >
-            <ShieldCheck className="w-3 h-3 text-cyan-400" />
+            <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
             <span>Evaluation</span>
           </button>
-        </div>
+        </nav>
 
-        {/* Right: Undo / Redo, Event Stream Toggle, Timer */}
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          {/* Undo / Redo Controls */}
-          <div className="flex items-center gap-1 p-0.5 rounded-lg border border-white/[0.08] bg-slate-900/60 text-xs font-mono">
+        {/* ==================== ZONE 3: ACTIONS & INTELLIGENCE (RIGHT) ==================== */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* History Controls (Undo / Redo) */}
+          <div className="flex items-center rounded-lg border border-white/[0.08] bg-slate-900/60 p-0.5">
             <button
               onClick={handleUndo}
               disabled={historyIndex === 0}
               className={`p-1.5 rounded-md transition ${
                 historyIndex > 0
-                  ? "text-slate-200 hover:text-cyan-300 hover:bg-white/[0.06]"
+                  ? "text-slate-300 hover:text-cyan-300 hover:bg-white/[0.06]"
                   : "text-slate-600 cursor-not-allowed"
               }`}
               title="Undo (Ctrl+Z)"
             >
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
+            <div className="h-3 w-[1px] bg-white/[0.06]" />
             <button
               onClick={handleRedo}
               disabled={historyIndex >= history.length - 1}
               className={`p-1.5 rounded-md transition ${
                 historyIndex < history.length - 1
-                  ? "text-slate-200 hover:text-cyan-300 hover:bg-white/[0.06]"
+                  ? "text-slate-300 hover:text-cyan-300 hover:bg-white/[0.06]"
                   : "text-slate-600 cursor-not-allowed"
               }`}
               title="Redo (Ctrl+Y)"
@@ -1991,7 +2065,9 @@ function SimulatorContent() {
             </button>
           </div>
 
-          {/* AI System Architect Drawer Toggle Button (Phase 4) */}
+          <div className="h-4 w-[1px] bg-white/[0.1] hidden sm:block" />
+
+          {/* AI Architect Button */}
           <button
             onClick={() => {
               const next = !showAiDrawer;
@@ -2001,93 +2077,90 @@ function SimulatorContent() {
                 handleFetchCritique();
               }
             }}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-mono font-bold transition shadow-sm ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-mono font-semibold transition shadow-sm ${
               showAiDrawer
                 ? "border-cyan-400 bg-cyan-500/20 text-cyan-300 ring-1 ring-cyan-400/50 shadow-[0_0_15px_rgba(6,182,212,0.25)]"
-                : "border-cyan-500/40 bg-cyan-950/40 text-cyan-300 hover:bg-cyan-900/40 hover:border-cyan-400/60"
+                : "border-cyan-500/30 bg-cyan-950/40 text-cyan-300 hover:bg-cyan-900/40 hover:border-cyan-400/50"
             }`}
             title="Consult AI System Architect for Live Topology Critique & Actionable Advice"
           >
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
             <span>AI Architect</span>
             {isAiLoading ? (
               <RefreshCw className="w-2.5 h-2.5 text-cyan-400 animate-spin" />
-            ) : (
-              <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                Live
-              </span>
-            )}
+            ) : null}
           </button>
 
-          {/* Phase 7: Socratic System Design Interview Mode Button */}
+          {/* Socratic System Design Interview Button */}
           <button
             onClick={() => setShowInterviewModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-mono font-bold transition shadow-sm bg-gradient-to-r from-violet-600/25 via-indigo-600/20 to-cyan-600/20 border-violet-500/40 text-violet-300 hover:border-violet-400 hover:text-white shadow-[0_0_12px_rgba(139,92,246,0.2)]"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-mono font-semibold transition shadow-sm bg-gradient-to-r from-violet-600/20 via-indigo-600/20 to-cyan-600/15 border-violet-500/30 text-violet-300 hover:border-violet-400 hover:text-white hover:shadow-[0_0_12px_rgba(139,92,246,0.25)]"
             title="Launch Interactive Socratic System Design Interview"
           >
             <MessageSquare className="w-3.5 h-3.5 text-violet-400" />
-            <span className="hidden sm:inline">Interview</span>
+            <span>Interview</span>
             <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-violet-500/25 text-violet-200 border border-violet-500/40">
-              Stage {interviewStage}/9
+              {interviewStage}/9
             </span>
           </button>
 
-          {/* Rules & Invariants Drawer Toggle Button */}
-          <button
+          <div className="h-4 w-[1px] bg-white/[0.1] hidden md:block" />
 
-            onClick={() => {
-              const next = !showValidationDrawer;
-              setShowValidationDrawer(next);
-              if (next) setShowAiDrawer(false);
-            }}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-mono transition ${
-              showValidationDrawer
-                ? "border-cyan-500/50 bg-cyan-500/15 text-cyan-300"
-                : validationResponse.violations.some((v) => v.severity === "critical")
-                ? "border-red-500/50 bg-red-500/10 text-red-300 hover:bg-red-500/20"
-                : validationResponse.violations.length > 0
-                ? "border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
-                : "border-white/[0.08] bg-white/[0.02] text-slate-300 hover:bg-white/[0.06]"
-            }`}
-            title="Toggle Deterministic Rule Violations & Architectural Invariants"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden sm:inline">Rules</span>
-            {validationResponse.violations.length > 0 ? (
+          {/* Diagnostics Suite: Rules, Events & Clock */}
+          <div className="flex items-center gap-1">
+            {/* Rules Button */}
+            <button
+              onClick={() => {
+                const next = !showValidationDrawer;
+                setShowValidationDrawer(next);
+                if (next) setShowAiDrawer(false);
+              }}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs font-mono transition ${
+                showValidationDrawer
+                  ? "border-cyan-500/50 bg-cyan-500/15 text-cyan-300"
+                  : validationResponse.violations.some((v) => v.severity === "critical")
+                  ? "border-red-500/50 bg-red-500/10 text-red-300 hover:bg-red-500/20"
+                  : validationResponse.violations.length > 0
+                  ? "border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
+                  : "border-white/[0.08] bg-white/[0.02] text-slate-300 hover:bg-white/[0.06]"
+              }`}
+              title={`Deterministic Rules: ${validationResponse.violations.length} Issues`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
               <span
                 className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
                   validationResponse.violations.some((v) => v.severity === "critical")
                     ? "bg-red-500 text-white"
-                    : "bg-amber-500 text-slate-950"
+                    : validationResponse.violations.length > 0
+                    ? "bg-amber-500 text-slate-950"
+                    : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
                 }`}
               >
                 {validationResponse.violations.length}
               </span>
-            ) : (
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                0
+            </button>
+
+            {/* Events Button */}
+            <button
+              onClick={() => setShowEventLog(!showEventLog)}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs font-mono transition ${
+                showEventLog
+                  ? "border-cyan-500/50 bg-cyan-500/15 text-cyan-300"
+                  : "border-white/[0.08] bg-white/[0.02] text-slate-300 hover:bg-white/[0.06]"
+              }`}
+              title={`Architecture Event Stream: ${events.length} Events`}
+            >
+              <History className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/[0.06] text-slate-300">
+                {events.length}
               </span>
-            )}
-          </button>
+            </button>
 
-          {/* Event Stream & Graph Inspector Button */}
-          <button
-            onClick={() => setShowEventLog(!showEventLog)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-mono transition ${
-              showEventLog
-                ? "border-cyan-500/50 bg-cyan-500/15 text-cyan-300"
-                : "border-white/[0.08] bg-white/[0.02] text-slate-300 hover:bg-white/[0.06]"
-            }`}
-            title="Toggle Architecture Event Stream & State Graph"
-          >
-            <History className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden lg:inline">Events ({events.length})</span>
-          </button>
-
-          {/* Timer Widget */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-white/[0.08] bg-white/[0.02] text-xs font-mono text-slate-300">
-            <Clock className="w-3.5 h-3.5 text-slate-400" />
-            <span>{formattedTime}</span>
+            {/* Session Timer */}
+            <div className="flex items-center gap-1 px-2 py-1 rounded-lg border border-white/[0.08] bg-white/[0.02] text-xs font-mono text-slate-300">
+              <Clock className="w-3 h-3 text-slate-400" />
+              <span>{formattedTime}</span>
+            </div>
           </div>
         </div>
       </header>
@@ -2264,6 +2337,15 @@ function SimulatorContent() {
 
           {/* Floating Action Bar */}
           <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 p-1 rounded-xl bg-slate-900/90 border border-white/[0.08] backdrop-blur-md shadow-xl text-xs font-mono">
+            <button
+              onClick={handleDeClusterCanvas}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-slate-300 hover:text-cyan-300 hover:bg-cyan-500/15 border border-transparent hover:border-cyan-500/30 transition text-xs font-mono font-medium"
+              title="Auto-organize and de-cluster canvas into clean architectural lanes"
+            >
+              <Workflow className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="hidden sm:inline">Clean Layout</span>
+            </button>
+            <div className="h-4 w-[1px] bg-white/[0.08]" />
             <button
               onClick={() => reactFlowInstance.fitView({ padding: 0.2 })}
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.04] transition"

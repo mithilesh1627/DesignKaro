@@ -74,6 +74,7 @@ export type ArchitectureEventType =
   | "CHANGE_CONNECTION_TYPE"
   | "LOAD_TEMPLATE"
   | "CLEAR_ARCHITECTURE"
+  | "AUTO_LAYOUT"
   | "UNDO"
   | "REDO";
 
