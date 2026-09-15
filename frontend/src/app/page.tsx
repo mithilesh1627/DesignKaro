@@ -463,6 +463,12 @@ export default function LandingPage() {
 
             <Link
               href="/learn"
+              onClick={(e) => {
+                if (!isAuthenticated) {
+                  e.preventDefault();
+                  setAuthModalOpen(true);
+                }
+              }}
               className="inline-flex items-center gap-2.5 px-7 py-4 rounded-2xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.15] text-white font-semibold text-sm sm:text-base transition-all duration-200 backdrop-blur-xl hover:scale-105 active:scale-95"
             >
               <Compass className="w-5 h-5 text-cyan-400" />
@@ -1089,6 +1095,12 @@ export default function LandingPage() {
             </div>
             <Link
               href="/learn"
+              onClick={(e) => {
+                if (!isAuthenticated) {
+                  e.preventDefault();
+                  setAuthModalOpen(true);
+                }
+              }}
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-mono text-xs font-bold transition active:scale-95"
             >
               <span>Explore Curriculum Tracks</span>
@@ -1100,7 +1112,11 @@ export default function LandingPage() {
             {/* Blueprint 1 */}
             <div
               onClick={() => {
-                window.location.href = "/design?template=tinyurl";
+                if (!isAuthenticated) {
+                  setAuthModalOpen(true);
+                } else {
+                  window.location.href = "/simulator";
+                }
               }}
               className="zen-bento-card p-5 rounded-2xl group hover:border-cyan-500/40 transition flex flex-col justify-between cursor-pointer"
             >
@@ -1125,7 +1141,11 @@ export default function LandingPage() {
             {/* Blueprint 2 */}
             <div
               onClick={() => {
-                window.location.href = "/simulator";
+                if (!isAuthenticated) {
+                  setAuthModalOpen(true);
+                } else {
+                  window.location.href = "/simulator";
+                }
               }}
               className="zen-bento-card p-5 rounded-2xl group hover:border-sky-500/40 transition flex flex-col justify-between cursor-pointer"
             >
@@ -1150,7 +1170,11 @@ export default function LandingPage() {
             {/* Blueprint 3 */}
             <div
               onClick={() => {
-                window.location.href = "/simulator";
+                if (!isAuthenticated) {
+                  setAuthModalOpen(true);
+                } else {
+                  window.location.href = "/simulator";
+                }
               }}
               className="zen-bento-card p-5 rounded-2xl group hover:border-indigo-500/40 transition flex flex-col justify-between cursor-pointer"
             >
@@ -1175,7 +1199,11 @@ export default function LandingPage() {
             {/* Blueprint 4 */}
             <div
               onClick={() => {
-                window.location.href = "/design?template=rate_limiter";
+                if (!isAuthenticated) {
+                  setAuthModalOpen(true);
+                } else {
+                  window.location.href = "/simulator";
+                }
               }}
               className="zen-bento-card p-5 rounded-2xl group hover:border-amber-500/40 transition flex flex-col justify-between cursor-pointer"
             >

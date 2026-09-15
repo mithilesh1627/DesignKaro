@@ -150,7 +150,7 @@ export const Navigation: React.FC<NavigationProps> = () => {
                   key={item.label}
                   href={item.href}
                   onClick={(e) => {
-                    if (item.href === "/simulator" && !isUserLoggedIn) {
+                    if ((item.href === "/simulator" || item.href === "/learn") && !isUserLoggedIn) {
                       e.preventDefault();
                       setAuthModalOpen(true);
                     }
@@ -358,7 +358,7 @@ export const Navigation: React.FC<NavigationProps> = () => {
                     href={item.href}
                     onClick={(e) => {
                       setMobileOpen(false);
-                      if (item.href === "/simulator" && !isUserLoggedIn) {
+                      if ((item.href === "/simulator" || item.href === "/learn") && !isUserLoggedIn) {
                         e.preventDefault();
                         setAuthModalOpen(true);
                       }
