@@ -149,6 +149,12 @@ export const Navigation: React.FC<NavigationProps> = () => {
                 <Link
                   key={item.label}
                   href={item.href}
+                  onClick={(e) => {
+                    if (item.href === "/simulator" && !isUserLoggedIn) {
+                      e.preventDefault();
+                      setAuthModalOpen(true);
+                    }
+                  }}
                   className={`px-3 py-1.5 rounded-md transition-all ${
                     isActive
                       ? "text-cyan-300 bg-white/[0.08] font-semibold border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.15)]"
@@ -350,7 +356,13 @@ export const Navigation: React.FC<NavigationProps> = () => {
                   <Link
                     key={item.label}
                     href={item.href}
-                    onClick={() => setMobileOpen(false)}
+                    onClick={(e) => {
+                      setMobileOpen(false);
+                      if (item.href === "/simulator" && !isUserLoggedIn) {
+                        e.preventDefault();
+                        setAuthModalOpen(true);
+                      }
+                    }}
                     className={`flex items-center justify-center gap-2 px-3 py-2.5 text-xs font-mono rounded-xl border transition-all ${
                       isActive
                         ? "bg-white/[0.08] border-cyan-500/40 text-cyan-300 font-semibold shadow-[0_0_12px_rgba(6,182,212,0.15)]"
