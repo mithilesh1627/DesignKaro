@@ -43,6 +43,7 @@ class UserProfile(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     bio: Mapped[str | None] = mapped_column(Text, nullable=True)
     experience_level: Mapped[str] = mapped_column(String(32), default="beginner", nullable=False)
     current_rank: Mapped[str] = mapped_column(String(64), default="Associate Architect", nullable=False)
+    target_role: Mapped[str] = mapped_column(String(64), default="Staff Systems Architect", server_default="Staff Systems Architect", nullable=False)
     target_qps: Mapped[int] = mapped_column(Integer, default=10000, nullable=False)
 
     # Relationships

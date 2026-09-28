@@ -101,6 +101,58 @@ class SystemTrafficSimulator:
         # State across seconds (for queue accumulation)
         accumulated_queue_depth: dict[str, int] = defaultdict(int)
 
+        CLIENT_TYPES = {
+            "client",
+            "web_client",
+            "client_tier",
+            "mobile_client",
+            "browser",
+            "user",
+            "device",
+            "traffic_generator",
+            "clients",
+        }
+        MAX_SERVICE_TIMEOUT_MS = 10000.0  # Realistic 10s maximum gateway/HTTP timeout bound
+
+        # Reset queues on healing
+        if fail_type in ("NONE", "HEAL_SYSTEM"):
+            accumulated_queue_depth.clear()
+
+        # Upstream and downstream failure propagation graphs
+        direct_callers: set[str] = set()
+        transitive_callers: set[str] = set()
+        downstream_from_target: set[str] = set()
+
+        if target_fail_id:
+            # 1. Direct callers (1-hop upstream, excluding clients)
+            for src in adj_in.get(target_fail_id, []):
+                src_node = node_map.get(src)
+                if src_node and src_node.type.lower() not in CLIENT_TYPES:
+                    direct_callers.add(src)
+
+            # 2. Transitive callers (2-hop+ upstream ancestors, excluding clients)
+            rev_queue = deque(direct_callers)
+            visited_rev: set[str] = set(direct_callers)
+            while rev_queue:
+                curr = rev_queue.popleft()
+                for parent in adj_in.get(curr, []):
+                    parent_node = node_map.get(parent)
+                    if parent not in visited_rev and parent_node and parent_node.type.lower() not in CLIENT_TYPES:
+                        visited_rev.add(parent)
+                        transitive_callers.add(parent)
+                        rev_queue.append(parent)
+
+            # 3. Downstream nodes (forward descendants from target)
+            fwd_queue = deque(adj_out.get(target_fail_id, []))
+            visited_fwd: set[str] = set(fwd_queue)
+            while fwd_queue:
+                curr = fwd_queue.popleft()
+                downstream_from_target.add(curr)
+                for child in adj_out.get(curr, []):
+                    if child not in visited_fwd:
+                        visited_fwd.add(child)
+                        fwd_queue.append(child)
+
         # Track per-node load for bottleneck detection
         node_peak_utilization: dict[str, float] = defaultdict(float)
         node_total_load: dict[str, float] = defaultdict(float)
@@ -153,7 +205,16 @@ class SystemTrafficSimulator:
 
                     is_u_crashed = is_failure_active and (u_id == target_fail_id) and is_crashed_type
                     if is_u_crashed:
-                        # Dead node drops all outbound traffic
+                        # In a cache outage (e.g. KILL_REDIS), uncached read traffic stampedes
+                        # directly to its downstream database targets instead of vanishing.
+                        if u_node.type in ("cache", "redis", "memcached"):
+                            out_qps = u_qps  # 100% cache miss stampede bypass
+                            split_qps = out_qps / max(1, len(targets))
+                            for t_id in targets:
+                                node_incoming_qps[t_id] += split_qps
+                                if t_id not in visited_in_tick:
+                                    visited_in_tick.add(t_id)
+                                    queue.append(t_id)
                         continue
 
                     # Determine outgoing traffic based on component semantics and read/write ratio
@@ -178,7 +239,36 @@ class SystemTrafficSimulator:
                     else:
                         out_qps = u_qps
 
-                    split_qps = out_qps / len(targets)
+                    # Cache stampede routing for parallel topologies:
+                    # If target_fail_id is a crashed cache and is in targets of u_node along with DB targets,
+                    # divert cache-bound traffic to the DB targets
+                    is_targeting_crashed_cache = (
+                        is_failure_active
+                        and is_crashed_type
+                        and target_fail_id in targets
+                        and node_map.get(target_fail_id)
+                        and node_map[target_fail_id].type in ("cache", "redis", "memcached")
+                    )
+                    if is_targeting_crashed_cache:
+                        db_targets = [
+                            t for t in targets
+                            if node_map.get(t) and node_map[t].type in (
+                                "relational_db", "postgresql", "mysql", "mongodb", "cassandra", "database"
+                            )
+                        ]
+                        if db_targets:
+                            # Instead of dropping on the dead cache, the thundering herd hits the DB targets directly
+                            non_cache_targets = [t for t in targets if t != target_fail_id]
+                            split_qps = out_qps / max(1, len(non_cache_targets))
+                            for t_id in non_cache_targets:
+                                node_incoming_qps[t_id] += split_qps
+                                if t_id not in visited_in_tick:
+                                    visited_in_tick.add(t_id)
+                                    queue.append(t_id)
+                            node_incoming_qps[target_fail_id] += out_qps / max(1, len(targets))
+                            continue
+
+                    split_qps = out_qps / max(1, len(targets))
                     for t_id in targets:
                         node_incoming_qps[t_id] += split_qps
                         if t_id not in visited_in_tick:
@@ -193,114 +283,194 @@ class SystemTrafficSimulator:
             node_metrics: list[NodeTickMetric] = []
 
             for n in nodes:
+                is_client = n.type.lower() in CLIENT_TYPES
                 replicas = max(1, n.properties.replicas)
                 capacity = max(100, n.properties.qps_capacity * replicas)
                 base_latency = max(0.5, n.properties.latency_ms) + (net_latency * 0.2)
                 assigned_qps = node_incoming_qps.get(n.id, 0.0)
 
-                # Track load for aggregate bottleneck detection
-                node_total_load[n.id] += assigned_qps
-                node_total_capacity[n.id] += capacity
-                utilization = min(100.0, (assigned_qps / float(capacity)) * 100.0)
-                node_peak_utilization[n.id] = max(node_peak_utilization[n.id], utilization)
-
-                is_target_failing = is_failure_active and (n.id == target_fail_id)
-
-                if is_target_failing:
-                    if is_crashed_type:
-                        status = "CRASHED"
-                        cpu = 0.0
-                        mem = 0.0
-                        queue_d = 50000
-                        err_rate = 1.0
-                        lat = 5000.0
-                        dropped = int(assigned_qps * 1.0)
-                        tick_errors += dropped
-                        delivered_qps = 0.0
-                    elif fail_type == "LATENCY_SPIKE":
-                        status = "DEGRADED"
-                        cpu = 88.0
-                        mem = 75.0
-                        queue_d = 12000
-                        err_rate = 0.15
-                        lat = base_latency + 500.0
-                        dropped = int(assigned_qps * 0.15)
-                        tick_errors += dropped
-                        delivered_qps = assigned_qps * 0.85
-                    elif fail_type in ("PACKET_LOSS", "DROP_REQUESTS"):
-                        status = "DEGRADED"
-                        cpu = 60.0
-                        mem = 50.0
-                        queue_d = 8000
-                        err_rate = 0.35
-                        lat = base_latency * 2.5
-                        dropped = int(assigned_qps * 0.35)
-                        tick_errors += dropped
-                        delivered_qps = assigned_qps * 0.65
-                    elif fail_type == "DB_OVERLOAD":
-                        status = "DEGRADED"
-                        cpu = 99.0
-                        mem = 95.0
-                        queue_d = 30000
-                        err_rate = 0.40
-                        lat = base_latency + 800.0
-                        dropped = int(assigned_qps * 0.40)
-                        tick_errors += dropped
-                        delivered_qps = assigned_qps * 0.60
-                    elif fail_type == "CACHE_FAILURE":
-                        status = "DEGRADED"
-                        cpu = 95.0
-                        mem = 90.0
-                        queue_d = 15000
-                        err_rate = 0.25
-                        lat = base_latency * 2.0
-                        dropped = int(assigned_qps * 0.25)
-                        tick_errors += dropped
-                        delivered_qps = assigned_qps * 0.75
-                    else:
-                        status = "DEGRADED"
-                        cpu = 95.0
-                        mem = 80.0
-                        queue_d = 15000
-                        err_rate = 0.20
-                        lat = base_latency * 2.0
-                        dropped = int(assigned_qps * 0.20)
-                        tick_errors += dropped
-                        delivered_qps = assigned_qps * 0.80
+                # Client nodes are external traffic generators: they don't bottleneck server architecture
+                if is_client:
+                    utilization = 0.0
+                    node_peak_utilization[n.id] = 0.0
+                    status = "HEALTHY"
+                    cpu = min(25.0, (assigned_qps / 50000.0) * 10.0)
+                    mem = 15.0
+                    queue_d = 0
+                    err_rate = 0.0
+                    lat = base_latency
+                    delivered_qps = assigned_qps
                 else:
-                    # Upstream blast radius: if an upstream node calls a dead target, it stalls
-                    is_caller_of_crashed = is_failure_active and (target_fail_id in adj_out[n.id]) and is_crashed_type
+                    # Track load for aggregate bottleneck detection on server components
+                    node_total_load[n.id] += assigned_qps
+                    node_total_capacity[n.id] += capacity
+                    utilization = min(100.0, (assigned_qps / float(capacity)) * 100.0)
+                    node_peak_utilization[n.id] = max(node_peak_utilization[n.id], utilization)
 
-                    load_ratio = assigned_qps / float(capacity)
-                    cpu = min(99.0, max(5.0, load_ratio * 75.0))
-                    mem = min(95.0, max(15.0, load_ratio * 60.0))
+                    is_target_failing = is_failure_active and (n.id == target_fail_id)
 
-                    if n.type in ("queue", "kafka", "rabbitmq"):
-                        queue_d = accumulated_queue_depth.get(n.id, 0)
+                    if is_target_failing:
+                        if is_crashed_type:
+                            status = "CRASHED"
+                            cpu = 0.0
+                            mem = 0.0
+                            queue_d = 50000
+                            err_rate = 1.0
+                            lat = 5000.0
+                            dropped = int(assigned_qps * 1.0)
+                            tick_errors += dropped
+                            delivered_qps = 0.0
+                        elif fail_type == "LATENCY_SPIKE":
+                            status = "DEGRADED"
+                            cpu = 88.0
+                            mem = 75.0
+                            queue_d = 12000
+                            err_rate = 0.15
+                            lat = min(MAX_SERVICE_TIMEOUT_MS, base_latency + 500.0)
+                            dropped = int(assigned_qps * 0.15)
+                            tick_errors += dropped
+                            delivered_qps = assigned_qps * 0.85
+                        elif fail_type in ("PACKET_LOSS", "DROP_REQUESTS"):
+                            status = "DEGRADED"
+                            cpu = 60.0
+                            mem = 50.0
+                            queue_d = 8000
+                            err_rate = 0.35
+                            lat = min(MAX_SERVICE_TIMEOUT_MS, base_latency * 2.5)
+                            dropped = int(assigned_qps * 0.35)
+                            tick_errors += dropped
+                            delivered_qps = assigned_qps * 0.65
+                        elif fail_type == "DB_OVERLOAD":
+                            status = "DEGRADED"
+                            cpu = 99.0
+                            mem = 95.0
+                            queue_d = 30000
+                            err_rate = 0.40
+                            lat = min(MAX_SERVICE_TIMEOUT_MS, base_latency + 800.0)
+                            dropped = int(assigned_qps * 0.40)
+                            tick_errors += dropped
+                            delivered_qps = assigned_qps * 0.60
+                        elif fail_type == "CACHE_FAILURE":
+                            status = "DEGRADED"
+                            cpu = 95.0
+                            mem = 90.0
+                            queue_d = 15000
+                            err_rate = 0.25
+                            lat = min(MAX_SERVICE_TIMEOUT_MS, base_latency * 2.0)
+                            dropped = int(assigned_qps * 0.25)
+                            tick_errors += dropped
+                            delivered_qps = assigned_qps * 0.75
+                        else:
+                            status = "DEGRADED"
+                            cpu = 95.0
+                            mem = 80.0
+                            queue_d = 15000
+                            err_rate = 0.20
+                            lat = min(MAX_SERVICE_TIMEOUT_MS, base_latency * 2.0)
+                            dropped = int(assigned_qps * 0.20)
+                            tick_errors += dropped
+                            delivered_qps = assigned_qps * 0.80
                     else:
-                        queue_d = int(max(0, (load_ratio - 0.8) * 10000)) if load_ratio > 0.8 else 0
+                        load_ratio = assigned_qps / float(capacity)
+                        cpu = min(99.0, max(5.0, load_ratio * 75.0))
+                        mem = min(95.0, max(15.0, load_ratio * 60.0))
 
-                    if is_caller_of_crashed:
-                        status = "DEGRADED"
-                        err_rate = 0.40
-                        lat = base_latency + 300.0
-                        queue_d += 15000
-                        dropped = int(assigned_qps * 0.40)
-                        tick_errors += dropped
-                        delivered_qps = assigned_qps * 0.60
-                    elif load_ratio > 1.0:
-                        status = "DEGRADED"
-                        err_rate = min(0.60, (load_ratio - 1.0) * 0.5)
-                        # Exponential queuing delay near saturation
-                        lat = base_latency * (1.0 + (load_ratio ** 2) * 2.5)
-                        dropped = int(assigned_qps * err_rate)
-                        tick_errors += dropped
-                        delivered_qps = assigned_qps - dropped
-                    else:
-                        status = "HEALTHY"
-                        err_rate = 0.001
-                        lat = base_latency * (1.0 + load_ratio * 0.3)
-                        delivered_qps = assigned_qps
+                        if n.type in ("queue", "kafka", "rabbitmq"):
+                            queue_d = accumulated_queue_depth.get(n.id, 0)
+                        else:
+                            queue_d = int(max(0, (load_ratio - 0.8) * 10000)) if load_ratio > 0.8 else 0
+
+                        # Upstream failure propagation (1-hop direct callers of crashed dependency)
+                        is_direct_caller_of_crashed = is_failure_active and (n.id in direct_callers) and is_crashed_type
+
+                        # Upstream failure propagation (2-hop+ transitive callers e.g. Gateway)
+                        is_transitive_caller_of_crashed = is_failure_active and (n.id in transitive_callers) and is_crashed_type
+
+                        # Downstream pipeline starvation (e.g. Workers consuming from a crashed Kafka broker)
+                        is_downstream_starved = is_failure_active and (n.id in downstream_from_target) and fail_type == "KILL_KAFKA"
+
+                        # Cache stampede saturation (Database tier overloaded during cache outage)
+                        is_db_cache_stampede = (
+                            is_failure_active
+                            and fail_type in ("KILL_REDIS", "CACHE_FAILURE")
+                            and n.type in ("relational_db", "postgresql", "mysql", "mongodb", "cassandra", "database")
+                            and load_ratio > 0.60
+                        )
+
+                        if is_direct_caller_of_crashed:
+                            # 1-hop direct callers stall on socket timeouts to dead dependency
+                            status = "DEGRADED"
+                            cpu = min(99.0, max(50.0, load_ratio * 90.0))
+                            mem = min(95.0, max(40.0, load_ratio * 80.0))
+                            err_rate = 0.45
+                            lat = min(MAX_SERVICE_TIMEOUT_MS, base_latency + 400.0)
+                            queue_d += 15000
+                            dropped = int(assigned_qps * 0.45)
+                            tick_errors += dropped
+                            delivered_qps = assigned_qps * 0.55
+                        elif is_transitive_caller_of_crashed:
+                            # 2-hop+ upstream callers (e.g. Gateway) experience cascading 502/504 errors
+                            status = "DEGRADED"
+                            cpu = min(95.0, max(35.0, load_ratio * 75.0))
+                            mem = min(90.0, max(30.0, load_ratio * 65.0))
+                            err_rate = 0.20
+                            lat = min(MAX_SERVICE_TIMEOUT_MS, base_latency + 200.0)
+                            queue_d += 8000
+                            dropped = int(assigned_qps * 0.20)
+                            tick_errors += dropped
+                            delivered_qps = assigned_qps * 0.80
+                        elif is_downstream_starved:
+                            # Downstream worker queue consumers starved of work by broken message broker
+                            status = "DEGRADED"
+                            cpu = 5.0
+                            mem = 20.0
+                            err_rate = 0.05
+                            lat = base_latency
+                            queue_d = 0
+                            dropped = 0
+                            delivered_qps = 0.0
+                        elif is_db_cache_stampede:
+                            # Database connection pool and storage IOPS exhausted by thundering herd cache miss surge
+                            status = "DEGRADED"
+                            cpu = min(99.0, max(85.0, load_ratio * 95.0))
+                            mem = min(95.0, max(80.0, load_ratio * 90.0))
+                            queue_d = max(15000, int((load_ratio - 0.60) * 25000))
+                            err_rate = min(0.60, max(0.20, 1.0 - (0.75 / max(0.76, load_ratio))))
+                            lat = min(MAX_SERVICE_TIMEOUT_MS, base_latency * 4.0)
+                            dropped = int(assigned_qps * err_rate)
+                            tick_errors += dropped
+                            delivered_qps = max(0.0, assigned_qps - dropped)
+                        elif is_failure_active and (n.id in direct_callers) and fail_type in ("DB_OVERLOAD", "CACHE_FAILURE"):
+                            status = "DEGRADED"
+                            err_rate = 0.25
+                            lat = min(MAX_SERVICE_TIMEOUT_MS, base_latency + 350.0)
+                            queue_d += 10000
+                            dropped = int(assigned_qps * 0.25)
+                            tick_errors += dropped
+                            delivered_qps = assigned_qps * 0.75
+                        elif is_failure_active and (n.id in transitive_callers) and fail_type in ("DB_OVERLOAD", "CACHE_FAILURE"):
+                            status = "DEGRADED"
+                            err_rate = 0.12
+                            lat = min(MAX_SERVICE_TIMEOUT_MS, base_latency + 150.0)
+                            queue_d += 5000
+                            dropped = int(assigned_qps * 0.12)
+                            tick_errors += dropped
+                            delivered_qps = assigned_qps * 0.88
+                        elif load_ratio > 1.0:
+                            status = "DEGRADED"
+                            # Overload error rate: beyond 100% capacity, unserved requests are rejected or timed out
+                            err_rate = min(0.95, max(0.05, 1.0 - (1.0 / load_ratio)))
+                            # Queuing latency rises steeply with load ratio, but is realistically bounded by gateway timeouts
+                            queue_multiplier = min(50.0, 1.0 + (load_ratio ** 1.5) * 2.0)
+                            lat = min(MAX_SERVICE_TIMEOUT_MS, base_latency * queue_multiplier)
+                            dropped = int(assigned_qps * err_rate)
+                            tick_errors += dropped
+                            delivered_qps = max(0.0, assigned_qps - dropped)
+                        else:
+                            status = "HEALTHY"
+                            err_rate = 0.001
+                            lat = min(MAX_SERVICE_TIMEOUT_MS, base_latency * (1.0 + load_ratio * 0.3))
+                            delivered_qps = assigned_qps
 
                 all_latency_readings.append(lat)
 
@@ -383,7 +553,8 @@ class SystemTrafficSimulator:
         bottleneck_remediation = None
         suggested_action = None
 
-        sorted_nodes = sorted(nodes, key=lambda n: node_peak_utilization[n.id], reverse=True)
+        server_nodes = [n for n in nodes if n.type.lower() not in CLIENT_TYPES]
+        sorted_nodes = sorted(server_nodes, key=lambda n: node_peak_utilization[n.id], reverse=True)
         if sorted_nodes and node_peak_utilization[sorted_nodes[0].id] >= 65.0:
             b_node = sorted_nodes[0]
             bottleneck_node_id = b_node.id
@@ -396,47 +567,88 @@ class SystemTrafficSimulator:
                     if nm.node_id == bottleneck_node_id:
                         nm.is_bottleneck = True
 
-            if b_node.type in ("relational_db", "postgresql", "mysql", "mongodb", "cassandra"):
+            if b_node.type in ("relational_db", "postgresql", "mysql", "mongodb", "cassandra", "database"):
                 bottleneck_type = "DATABASE"
-                bottleneck_explanation = (
-                    f"{bottleneck_node_name} is currently the primary bottleneck ({int(bottleneck_utilization)}% capacity saturated). "
-                    "Adding more application servers will not solve this because all application servers still depend on the same database."
-                )
-                ai_bottleneck_explanation = (
-                    f"Architectural Bottleneck: {bottleneck_node_name} is enduring heavy read/write contention. "
-                    f"With a {int(read_ratio*100)}% read ratio and {traffic.peak_qps:,} Peak RPS, the un-cached query volume "
-                    "exhausts DB thread pools and IOPS, cascading latency spikes upstream."
-                )
-                if not cache_nodes:
-                    bottleneck_remediation = "Introduce a Redis read-through caching tier to absorb 85%+ of read queries before they hit the DB."
-                    suggested_action = "add_component:redis"
+                is_read_heavy = read_ratio >= 0.70
+                if is_read_heavy:
+                    bottleneck_explanation = (
+                        f"{bottleneck_node_name} database is the primary bottleneck ({int(bottleneck_utilization)}% capacity saturated). "
+                        f"Under {int(read_ratio * 100)}% read traffic, direct database queries exceed available connection pool slots (default max: 100 conns) "
+                        "and exhaust storage IOPS. Scaling application servers upstream will NOT resolve this, as all workers queue on the same DB lock."
+                    )
+                    ai_bottleneck_explanation = (
+                        f"Database Read Saturation: {bottleneck_node_name} is processing un-cached query traffic. "
+                        "Disk I/O read queues and table locks cascade p99 latency upstream. "
+                        "Remediation: Introduce an in-memory Redis cluster or read replicas with PgBouncer connection pooling."
+                    )
+                    if not cache_nodes:
+                        bottleneck_remediation = "Place a Redis caching tier in front of the database to absorb 85%+ of read queries."
+                        suggested_action = "add_component:redis"
+                    else:
+                        bottleneck_remediation = f"Scale database read replicas to {max(2, b_node.properties.replicas + 2)} and configure connection pooling."
+                        suggested_action = f"scale:{b_node.id}:{max(2, b_node.properties.replicas + 2)}"
                 else:
-                    bottleneck_remediation = "Add read replicas or partition database tables to distribute query load."
-                    suggested_action = f"scale:{b_node.id}:{max(2, b_node.properties.replicas + 2)}"
+                    bottleneck_explanation = (
+                        f"{bottleneck_node_name} database is write-saturated ({int(bottleneck_utilization)}% capacity). "
+                        f"With {int((1.0 - read_ratio) * 100)}% write operations, WAL logging and transaction lock contention cause severe write serialization."
+                    )
+                    ai_bottleneck_explanation = (
+                        f"Write Pipeline Bottleneck: Synchronous writes to {bottleneck_node_name} cannot keep up with peak load. "
+                        "Remediation: Decouple write ingestion with an asynchronous Kafka message queue or shard the database by entity ID."
+                    )
+                    bottleneck_remediation = "Decouple synchronous write operations using an asynchronous Kafka message queue buffer."
+                    suggested_action = "add_component:kafka"
 
-            elif b_node.type in ("service", "server", "microservice"):
+            elif b_node.type in ("service", "server", "microservice", "worker"):
                 bottleneck_type = "COMPUTE"
                 bottleneck_explanation = (
-                    f"{bottleneck_node_name} application tier is saturated at {int(bottleneck_utilization)}% CPU/memory utilization. "
-                    "Incoming request arrival rate exceeds stateless worker concurrency."
+                    f"{bottleneck_node_name} compute tier is saturated at {int(bottleneck_utilization)}% capacity. "
+                    f"Running {b_node.properties.replicas} instance(s), the worker thread pool is starved, causing requests to queue up in the OS TCP backlog."
                 )
                 ai_bottleneck_explanation = (
-                    f"Compute Bottleneck: {bottleneck_node_name} has {b_node.properties.replicas} instance(s) running. "
-                    f"At peak load of {traffic.peak_qps:,} RPS, requests queue up waiting for available worker threads."
+                    f"Stateless Worker Exhaustion: {bottleneck_node_name} has insufficient concurrency to process {traffic.peak_qps:,} Peak RPS. "
+                    "Each request holds worker threads during I/O operations, cascading p99 latency."
                 )
-                bottleneck_remediation = f"Scale compute cluster from {b_node.properties.replicas} to {b_node.properties.replicas + 2} replicas."
+                bottleneck_remediation = f"Horizontally scale compute cluster from {b_node.properties.replicas} to {b_node.properties.replicas + 2} replicas."
                 suggested_action = f"scale:{b_node.id}:{b_node.properties.replicas + 2}"
 
-            elif b_node.type in ("gateway", "api_gateway", "load_balancer"):
-                bottleneck_type = "INGRESS"
+            elif b_node.type in ("cache", "redis", "memcached"):
+                bottleneck_type = "CACHE"
                 bottleneck_explanation = (
-                    f"{bottleneck_node_name} is saturated at {int(bottleneck_utilization)}% capacity. "
-                    "Ingress reverse proxy connection limits are bottlenecking traffic entry."
+                    f"{bottleneck_node_name} cache is saturated at {int(bottleneck_utilization)}% capacity. "
+                    "In-memory throughput or network bandwidth limit reached. Redis event-loop CPU is maxed out."
                 )
                 ai_bottleneck_explanation = (
-                    f"Edge Bottleneck: Reverse proxy {bottleneck_node_name} is dropping connections due to socket exhaustion."
+                    f"Cache Tier Saturated: {bottleneck_node_name} is enduring heavy eviction waves or high key contention. "
+                    "Remediation: Cluster Redis across multiple shards with primary-replica replication."
                 )
-                bottleneck_remediation = "Scale load balancer instances or enable CDN edge caching."
+                bottleneck_remediation = f"Scale cache cluster to {b_node.properties.replicas + 2} shards or add read replicas."
+                suggested_action = f"scale:{b_node.id}:{b_node.properties.replicas + 2}"
+
+            elif b_node.type in ("queue", "kafka", "rabbitmq"):
+                bottleneck_type = "QUEUE"
+                bottleneck_explanation = (
+                    f"{bottleneck_node_name} message broker backlog reached {accumulated_queue_depth.get(b_node.id, 0):,} messages. "
+                    "Ingestion rate exceeds downstream worker consumption capacity."
+                )
+                ai_bottleneck_explanation = (
+                    f"Queue Backpressure: {bottleneck_node_name} partitions cannot drain fast enough. "
+                    "Remediation: Scale worker consumer instances and increase broker partition count."
+                )
+                bottleneck_remediation = "Scale downstream consumer workers and increase queue partitions."
+                suggested_action = f"scale:{b_node.id}:{b_node.properties.replicas + 1}"
+
+            elif b_node.type in ("gateway", "api_gateway", "load_balancer", "cdn"):
+                bottleneck_type = "INGRESS"
+                bottleneck_explanation = (
+                    f"{bottleneck_node_name} ingress proxy is saturated at {int(bottleneck_utilization)}% capacity. "
+                    "File descriptor / TCP socket connection limits are exhausted by concurrent clients."
+                )
+                ai_bottleneck_explanation = (
+                    f"Edge Socket Exhaustion: Reverse proxy {bottleneck_node_name} cannot accept more TCP handshakes. "
+                    "Remediation: Add CDN edge caching to offload static traffic or scale reverse proxy instances."
+                )
+                bottleneck_remediation = "Place CDN edge caching in front of the gateway to offload static requests."
                 suggested_action = "add_component:cdn"
 
             else:
@@ -454,14 +666,23 @@ class SystemTrafficSimulator:
         chaos_report: ChaosIncidentReport | None = None
         target_name = node_map[target_fail_id].label if (target_fail_id in node_map and node_map[target_fail_id].label) else (target_fail_id or "target-node")
 
+        # Dynamically compute actually failed and degraded nodes from simulation ticks
+        failed_node_ids = sorted(list(set(
+            m.node_id for t in ticks for m in t.node_metrics if m.status == "CRASHED"
+        )))
+        degraded_node_ids = sorted(list(set(
+            m.node_id for t in ticks for m in t.node_metrics
+            if m.status == "DEGRADED" and m.node_id not in failed_node_ids and m.node_type.lower() not in CLIENT_TYPES
+        )))
+
         if fail_type == "KILL_REDIS":
             blast_radius = f"Severe blast radius. Killing Redis cache '{target_name}' dropped hit ratio to 0% and saturated DB with {total_dropped:,} dropped requests."
             rca = f"Root Cause: Cache '{target_name}' crashed without an active-passive replica or multi-AZ cluster. All un-cached read traffic hit the database directly."
             chaos_report = ChaosIncidentReport(
                 scenario="KILL_REDIS",
                 title="Redis Cache Outage & Database IOPS Spike",
-                failed_node_ids=[target_fail_id] if target_fail_id else [],
-                degraded_node_ids=[n.id for n in db_nodes],
+                failed_node_ids=failed_node_ids,
+                degraded_node_ids=degraded_node_ids,
                 what_happened=f"Redis cache '{target_name}' crashed unexpectedly. Cache hit ratio plummeted to 0%, dumping 100% of read traffic directly onto primary database.",
                 why_it_happened="Cache instance failed without automatic failover. Downstream relational DB experienced connection pool exhaustion and disk IOPS lock.",
                 mitigation_strategies=[
@@ -478,8 +699,8 @@ class SystemTrafficSimulator:
             chaos_report = ChaosIncidentReport(
                 scenario="KILL_POSTGRES",
                 title="Primary Database Outage & Write Pipeline Disruption",
-                failed_node_ids=[target_fail_id] if target_fail_id else [],
-                degraded_node_ids=[n.id for n in compute_nodes],
+                failed_node_ids=failed_node_ids,
+                degraded_node_ids=degraded_node_ids,
                 what_happened=f"Primary database '{target_name}' became unreachable. All persistent write transactions failed and uncached queries timed out.",
                 why_it_happened="Database node encountered storage exhaustion, hardware failure, or primary node panic without hot standby promotion.",
                 mitigation_strategies=[
@@ -496,8 +717,8 @@ class SystemTrafficSimulator:
             chaos_report = ChaosIncidentReport(
                 scenario="KILL_KAFKA",
                 title="Message Broker Cluster Failure",
-                failed_node_ids=[target_fail_id] if target_fail_id else [],
-                degraded_node_ids=[n.id for n in compute_nodes],
+                failed_node_ids=failed_node_ids,
+                degraded_node_ids=degraded_node_ids,
                 what_happened=f"Message broker '{target_name}' stopped accepting messages. Ingestion buffers saturated and worker threads starved.",
                 why_it_happened="Broker quorum loss or disk write saturation halted log segment writes.",
                 mitigation_strategies=[
@@ -513,8 +734,8 @@ class SystemTrafficSimulator:
             chaos_report = ChaosIncidentReport(
                 scenario="KILL_APP_SERVER",
                 title="Application Compute Tier Failure",
-                failed_node_ids=[target_fail_id] if target_fail_id else [],
-                degraded_node_ids=[n.id for n in gateway_nodes],
+                failed_node_ids=failed_node_ids,
+                degraded_node_ids=degraded_node_ids,
                 what_happened=f"App compute cluster '{target_name}' terminated unexpectedly. Upstream load balancers dropped incoming HTTP connections.",
                 why_it_happened="OOM error, unhandled exception, or container node eviction took down the application process.",
                 mitigation_strategies=[
@@ -530,8 +751,8 @@ class SystemTrafficSimulator:
             chaos_report = ChaosIncidentReport(
                 scenario="LATENCY_SPIKE",
                 title="Cascading Latency Spike",
-                failed_node_ids=[],
-                degraded_node_ids=[target_fail_id] if target_fail_id else [n.id for n in nodes],
+                failed_node_ids=failed_node_ids,
+                degraded_node_ids=degraded_node_ids,
                 what_happened=f"Network latency degraded by 500ms on '{target_name}', causing request queues to back up and p99 latency to spike to {p99:.1f}ms.",
                 why_it_happened="Cross-region networking contention or un-indexed query execution locking threads.",
                 mitigation_strategies=[
@@ -547,8 +768,8 @@ class SystemTrafficSimulator:
             chaos_report = ChaosIncidentReport(
                 scenario="DROP_REQUESTS",
                 title="Ingress Packet Loss & Request Drop Storm",
-                failed_node_ids=[],
-                degraded_node_ids=[n.id for n in (gateway_nodes or ingress_nodes)],
+                failed_node_ids=failed_node_ids,
+                degraded_node_ids=degraded_node_ids,
                 what_happened="35% of incoming network requests were dropped before reaching application logic.",
                 why_it_happened="Network congestion, SYN flood backlog queue saturation, or transit provider peering packet loss.",
                 mitigation_strategies=[
@@ -564,8 +785,8 @@ class SystemTrafficSimulator:
             chaos_report = ChaosIncidentReport(
                 scenario="DB_OVERLOAD",
                 title="Database IOPS & Connection Pool Exhaustion",
-                failed_node_ids=[],
-                degraded_node_ids=[target_fail_id] if target_fail_id else [n.id for n in db_nodes],
+                failed_node_ids=failed_node_ids,
+                degraded_node_ids=degraded_node_ids,
                 what_happened=f"Database '{target_name}' reached 100% capacity saturation. Connection queues overflowed.",
                 why_it_happened="Unthrottled write volume and complex table scans overwhelmed available DB thread workers.",
                 mitigation_strategies=[
@@ -581,8 +802,8 @@ class SystemTrafficSimulator:
             chaos_report = ChaosIncidentReport(
                 scenario="CACHE_FAILURE",
                 title="Cache Stampede (Thundering Herd Outage)",
-                failed_node_ids=[],
-                degraded_node_ids=([n.id for n in cache_nodes] + [n.id for n in db_nodes]),
+                failed_node_ids=failed_node_ids,
+                degraded_node_ids=degraded_node_ids,
                 what_happened="Cache keys expired without jitter, causing thousands of concurrent requests to hammer the database at once.",
                 why_it_happened="Lack of single-flight mutex locking or probabilistic early expiration (XFetch).",
                 mitigation_strategies=[
@@ -598,8 +819,8 @@ class SystemTrafficSimulator:
             chaos_report = ChaosIncidentReport(
                 scenario="KILL_NODE",
                 title=f"Component Failure: {target_name}",
-                failed_node_ids=[target_fail_id] if target_fail_id else [],
-                degraded_node_ids=[],
+                failed_node_ids=failed_node_ids,
+                degraded_node_ids=degraded_node_ids,
                 what_happened=f"Node '{target_name}' was terminated. Traffic routed to this node was dropped.",
                 why_it_happened="Target node failure without active failover.",
                 mitigation_strategies=[
@@ -608,6 +829,10 @@ class SystemTrafficSimulator:
                 ],
                 recommended_remediation=f"scale:{target_fail_id}:2" if target_fail_id else None
             )
+        elif fail_type == "HEAL_SYSTEM":
+            blast_radius = "All systems healed. Injected faults cleared; all components and queue buffers restored to nominal healthy operational state."
+            rca = None
+            chaos_report = None
         else:
             blast_radius = "Nominal blast radius. System handled traffic curve with proportional node saturation."
             rca = None

@@ -1,3 +1,4 @@
+import re
 import uuid
 
 from backend.app.schemas.interview import (
@@ -59,24 +60,54 @@ class SystemDesignInterviewEngine:
         stage = req.current_stage
         user_msg = (req.message or "").strip().lower()
         words = set(user_msg.split())
+        words_list = user_msg.split()
+        word_count = len(words_list)
+        char_count = len(user_msg)
 
         # Keywords for stage evaluation
         stage_keywords = {
-            1: {"qps", "read", "write", "latency", "sla", "functional", "scope", "users", "million", "redirect", "availab", "short", "p99", "requirement"},
-            2: {"qps", "dau", "storage", "bytes", "peak", "ratio", "bandwidth", "second", "day", "calculation", "gb", "tb", "cache", "86400", "math"},
-            3: {"gateway", "load", "balancer", "service", "cache", "redis", "database", "postgres", "nosql", "queue", "kafka", "cdn", "ingress", "stateless"},
-            4: {"partition", "shard", "index", "key", "schema", "table", "hot", "consistency", "acid", "replica", "replicate", "b-tree", "lsm", "hashing"},
-            5: {"circuit", "breaker", "timeout", "retry", "backoff", "jitter", "fallback", "degrade", "failover", "dlq", "dead", "queue", "partition", "idempotent"}
+            1: {"qps", "read", "write", "latency", "sla", "functional", "scope", "users", "million", "redirect", "availab", "short", "p99", "requirement", "http", "301", "302", "consistency"},
+            2: {"qps", "dau", "storage", "bytes", "peak", "ratio", "bandwidth", "second", "day", "calculation", "gb", "tb", "cache", "86400", "math", "little", "concurrency", "multiplier", "actions", "hits"},
+            3: {"gateway", "load", "balancer", "service", "cache", "redis", "database", "postgres", "nosql", "queue", "kafka", "cdn", "ingress", "stateless", "l7", "proxy", "auth", "decouple"},
+            4: {"partition", "shard", "index", "key", "schema", "table", "hot", "consistency", "acid", "replica", "replicate", "b-tree", "lsm", "hashing", "salt", "compound", "nosql"},
+            5: {"circuit", "breaker", "timeout", "retry", "backoff", "jitter", "fallback", "degrade", "failover", "dlq", "dead", "queue", "partition", "idempotent", "rate", "limit", "bulkhead"}
         }
 
         expected = stage_keywords.get(stage, set())
         matches = [w for w in expected if w in user_msg]
         match_count = len(matches)
 
+        # Quantitative indicators: numbers, units, latency, status codes, percentages
+        has_metrics = bool(re.search(r"\b(\d+|qps|rps|ms|tb|gb|mb|dau|%|p99|p95|sla|http\s*\d{3}|sec|second)\b", user_msg))
+
         # Check for nonsensical, empty, or hostile inputs
-        is_gibberish = len(user_msg) < 8 or len(words) < 3 or (
-            all(w not in user_msg for w in ["system", "data", "service", "api", "qps", "db", "user", "cache", "server", "url", "http"])
+        is_gibberish = char_count < 10 or word_count < 3 or (
+            all(w not in user_msg for w in ["system", "data", "service", "api", "qps", "db", "user", "cache", "server", "url", "http", "load", "scale", "node", "queue", "network", "latency", "redirect"])
             and match_count == 0
+        )
+
+        # Check for vague, superficial, or 1-sentence answers lacking quantitative/technical depth
+        is_vague_one_liner = (
+            not is_gibberish
+            and (
+                word_count < 12
+                or (word_count < 22 and not has_metrics and match_count <= 2)
+                or (match_count <= 1 and not has_metrics)
+            )
+        )
+
+        # Check whether candidate is defending/retrying after a previous probe
+        turns_for_stage = [t for t in self.sessions.get(session_id, {}).get("turns", []) if t.get("stage") == stage]
+        is_retry_defense = len(turns_for_stage) >= 1
+
+        is_staff_caliber = (
+            not is_gibberish
+            and not is_vague_one_liner
+            and (
+                (match_count >= 3 and has_metrics)
+                or (word_count >= 30 and match_count >= 2)
+                or (word_count >= 12 and has_metrics and match_count >= 2)
+            )
         )
 
         turn_score = 30
@@ -94,9 +125,43 @@ class SystemDesignInterviewEngine:
                 f"As a Staff Architect, I cannot evaluate '{req.message[:50]}'. "
                 f"For **Stage {stage}: {STAGES[stage]}**, please state concrete architectural parameters, numbers, or component trade-offs."
             )
-        elif match_count >= 2 or len(user_msg) > 60:
+        elif is_vague_one_liner:
+            turn_score = 45
+            signal = "Needs Work"
+            next_ready = False
+            notes = "Vague or one-sentence response lacking quantitative bounds, trade-offs, and failure mode analysis."
+
+            if stage == 1:
+                reply = (
+                    "Stating high-level aspirations like 'fast' or 'available' is too vague for a Staff-level scope. "
+                    "What are the concrete numerical targets? Specifically: What is your estimated peak write QPS vs read QPS? "
+                    "What is the p99 latency SLA (e.g. sub-50ms vs sub-200ms)? Is strong consistency required for all data, or is eventual consistency acceptable for non-critical flows?"
+                )
+            elif stage == 2:
+                reply = (
+                    "A hand-wavy estimate without derivations will not pass a Tier-1 system design loop. "
+                    "Walk me through the first-principles math: Starting from 50M DAU with 10 actions/user, what is your daily request volume? "
+                    "Applying Little's Law, what concurrency and egress bandwidth (Gbps/Tbps) does that translate to during peak traffic hours?"
+                )
+            elif stage == 3:
+                reply = (
+                    "Merely listing high-level component names is insufficient. How do your components actually interact? "
+                    "How does your ingress proxy handle SSL termination and rate limiting before hitting application servers? "
+                    "Are your compute services stateless, and how are write operations decoupled from the read path?"
+                )
+            elif stage == 4:
+                reply = (
+                    "Simply naming a database without schema and partition keys leaves the storage tier vulnerable to hotspots. "
+                    "What is the partition/shard key? If a single user or item goes viral, how do you prevent single-node disk I/O lock contention (e.g. salting or compound keys)?"
+                )
+            else:
+                reply = (
+                    "Saying 'we will retry or add replicas' can cause a catastrophic retry storm that knocks out recovering services. "
+                    "What is your exponential backoff strategy with jitter? At what error threshold do your circuit breakers trip to serve degraded fallbacks?"
+                )
+        elif is_staff_caliber:
             turn_score = 95 if match_count >= 3 else 90
-            signal = "Strong Hire" if turn_score >= 90 else "Hire"
+            signal = "Strong Hire"
             next_ready = True
 
             if stage == 1:
@@ -141,14 +206,23 @@ class SystemDesignInterviewEngine:
                 )
                 next_ready = False
         else:
-            turn_score = 60
-            signal = "Leaning Hire"
-            next_ready = True
-            notes = "Partially viable answer; candidate could provide deeper trade-off analysis."
-            reply = (
-                f"You touched on some valid points. However, in a Staff-level interview, "
-                f"I'd like to see more quantitative depth on trade-offs. Let's advance to Stage {min(5, stage + 1)}."
-            )
+            if is_retry_defense:
+                turn_score = 75
+                signal = "Hire"
+                next_ready = True
+                notes = "Adequate follow-up addressing the Socratic challenge."
+                reply = (
+                    f"Good defense on the trade-offs. Let's advance to Stage {min(5, stage + 1)}: {STAGES.get(min(5, stage + 1))}."
+                )
+            else:
+                turn_score = 60
+                signal = "Leaning Hire"
+                next_ready = False
+                notes = "Partially viable answer; candidate could provide deeper trade-off analysis."
+                reply = (
+                    f"You touched on some valid points. However, in a Staff-level interview, "
+                    f"I'd like to see more quantitative depth on trade-offs. Specifically for {STAGES[stage]}, what are the critical operational edge cases?"
+                )
 
         # Record session turn
         if session_id not in self.sessions:
@@ -226,7 +300,7 @@ class SystemDesignInterviewEngine:
         scores = session.get("scores", {})
 
         completed_scores = list(scores.values())
-        avg_demonstrated = int(sum(completed_scores) / len(completed_scores)) if completed_scores else 85
+        avg_demonstrated = int(sum(completed_scores) / len(completed_scores)) if completed_scores else 30
 
         # Populate scores across the 5 dimensions
         dimension_scores = {

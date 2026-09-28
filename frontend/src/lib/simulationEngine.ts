@@ -8,6 +8,7 @@ import {
   ChaosIncidentReport,
 } from "@/types/simulator";
 import { mapToBackendGraph } from "./architectureGraph";
+import { API_BASE } from "./api";
 
 
 export const DEFAULT_TRAFFIC_PROFILE: SimulationTrafficProfile = {
@@ -31,6 +32,21 @@ export interface TrafficPreset {
 }
 
 export const TRAFFIC_PRESETS: TrafficPreset[] = [
+  {
+    id: "baseline",
+    name: "Beginner Baseline",
+    badge: "1K RPS",
+    description: "Low-throughput test ideal for validating small architectures and baseline topologies.",
+    profile: {
+      base_qps: 500,
+      peak_qps: 1000,
+      concurrent_users: 10000,
+      read_ratio: 0.9,
+      payload_kb: 2.0,
+      cache_hit_ratio: 0.9,
+      network_latency_ms: 10.0,
+    },
+  },
   {
     id: "normal",
     name: "Standard Traffic",
@@ -59,6 +75,21 @@ export const TRAFFIC_PRESETS: TrafficPreset[] = [
       payload_kb: 10.0,
       cache_hit_ratio: 0.85,
       network_latency_ms: 18.0,
+    },
+  },
+  {
+    id: "stress_test",
+    name: "Extreme Stress Test",
+    badge: "100K RPS",
+    description: "High concurrency stress test pushing compute and database to operational limits.",
+    profile: {
+      base_qps: 25000,
+      peak_qps: 100000,
+      concurrent_users: 1000000,
+      read_ratio: 0.8,
+      payload_kb: 8.0,
+      cache_hit_ratio: 0.85,
+      network_latency_ms: 20.0,
     },
   },
   {
@@ -108,6 +139,20 @@ export const TRAFFIC_PRESETS: TrafficPreset[] = [
   },
 ];
 
+export const CLIENT_TYPES = new Set([
+  "client",
+  "web_client",
+  "client_tier",
+  "mobile_client",
+  "browser",
+  "user",
+  "device",
+  "traffic_generator",
+  "clients",
+]);
+
+export const MAX_SERVICE_TIMEOUT_MS = 10000;
+
 /**
  * Deterministic First-Principles Client-Side Simulation Engine (0ms Latency).
  * Executes M/M/c queueing theory and network topology flow across ArchitectureGraph.
@@ -120,6 +165,18 @@ export function runClientSimulation(
 ): SimulationResult {
   const { nodes, edges } = graph;
   const simId = `sim-client-${Date.now().toString(36)}`;
+
+  const safeProfile: SimulationTrafficProfile = {
+    base_qps: Math.max(0, profile?.base_qps ?? DEFAULT_TRAFFIC_PROFILE.base_qps),
+    peak_qps: Math.max(0, profile?.peak_qps ?? DEFAULT_TRAFFIC_PROFILE.peak_qps),
+    duration_sec: Math.max(1, profile?.duration_sec ?? DEFAULT_TRAFFIC_PROFILE.duration_sec),
+    step_sec: Math.max(1, profile?.step_sec ?? DEFAULT_TRAFFIC_PROFILE.step_sec),
+    concurrent_users: Math.max(0, profile?.concurrent_users ?? DEFAULT_TRAFFIC_PROFILE.concurrent_users),
+    read_ratio: Math.min(1, Math.max(0, profile?.read_ratio ?? DEFAULT_TRAFFIC_PROFILE.read_ratio)),
+    payload_kb: Math.max(0.01, profile?.payload_kb ?? DEFAULT_TRAFFIC_PROFILE.payload_kb),
+    cache_hit_ratio: Math.min(1, Math.max(0, profile?.cache_hit_ratio ?? DEFAULT_TRAFFIC_PROFILE.cache_hit_ratio)),
+    network_latency_ms: Math.max(0, profile?.network_latency_ms ?? DEFAULT_TRAFFIC_PROFILE.network_latency_ms),
+  };
 
   if (nodes.length === 0) {
     return {
@@ -232,25 +289,69 @@ export function runClientSimulation(
     accumulatedQueue[n.id] = 0;
   });
 
-  const hasCache = nodes.some((n) => ["cache", "redis", "memcached"].includes(n.type));
-  const baseCacheHit = hasCache ? profile.cache_hit_ratio : 0;
+  // Pre-calculate failure propagation topology
+  const directCallers = new Set<string>();
+  const transitiveCallers = new Set<string>();
+  const downstreamFromTarget = new Set<string>();
 
-  for (let sec = 0; sec < profile.duration_sec; sec += profile.step_sec) {
-    const progress = sec / Math.max(1, profile.duration_sec);
+  if (resolvedTargetId) {
+    // 1. Direct callers (1-hop upstream, excluding clients)
+    (adjIn.get(resolvedTargetId) || []).forEach((src) => {
+      const srcNode = nodeMap.get(src);
+      if (srcNode && !CLIENT_TYPES.has(srcNode.type.toLowerCase())) {
+        directCallers.add(src);
+      }
+    });
+
+    // 2. Transitive callers (2-hop+ upstream ancestors, excluding clients)
+    const revQueue = Array.from(directCallers);
+    const visitedRev = new Set<string>(directCallers);
+    while (revQueue.length > 0) {
+      const curr = revQueue.shift()!;
+      (adjIn.get(curr) || []).forEach((parent) => {
+        const parentNode = nodeMap.get(parent);
+        if (!visitedRev.has(parent) && parentNode && !CLIENT_TYPES.has(parentNode.type.toLowerCase())) {
+          visitedRev.add(parent);
+          transitiveCallers.add(parent);
+          revQueue.push(parent);
+        }
+      });
+    }
+
+    // 3. Downstream nodes (forward descendants from target)
+    const fwdQueue = [...(adjOut.get(resolvedTargetId) || [])];
+    const visitedFwd = new Set<string>(fwdQueue);
+    while (fwdQueue.length > 0) {
+      const curr = fwdQueue.shift()!;
+      downstreamFromTarget.add(curr);
+      (adjOut.get(curr) || []).forEach((child) => {
+        if (!visitedFwd.has(child)) {
+          visitedFwd.add(child);
+          fwdQueue.push(child);
+        }
+      });
+    }
+  }
+
+  const hasCache = nodes.some((n) => ["cache", "redis", "memcached"].includes(n.type));
+  const baseCacheHit = hasCache ? safeProfile.cache_hit_ratio : 0;
+
+  for (let sec = 0; sec < safeProfile.duration_sec; sec += safeProfile.step_sec) {
+    const progress = sec / Math.max(1, safeProfile.duration_sec);
     const bellCurve = Math.sin(progress * Math.PI);
     const currentQps = Math.round(
-      profile.base_qps + (profile.peak_qps - profile.base_qps) * bellCurve
+      safeProfile.base_qps + (safeProfile.peak_qps - safeProfile.base_qps) * bellCurve
     );
     peakObservedQps = Math.max(peakObservedQps, currentQps);
-    totalRequests += currentQps * profile.step_sec;
+    totalRequests += currentQps * safeProfile.step_sec;
 
     // Failure is active across the middle 70% of the run or entire run if short
     const isFailureActive =
       chaosFailure !== "NONE" &&
       chaosFailure !== "HEAL_SYSTEM" &&
-      (profile.duration_sec <= 10 ||
-        (sec >= Math.round(profile.duration_sec * 0.2) &&
-          sec <= Math.round(profile.duration_sec * 0.85)));
+      (safeProfile.duration_sec <= 10 ||
+        (sec >= Math.round(safeProfile.duration_sec * 0.2) &&
+          sec <= Math.round(safeProfile.duration_sec * 0.85)));
 
     // Effective cache hit ratio drops to 0 during KILL_REDIS or CACHE_FAILURE
     const effectiveCacheHitRatio =
@@ -277,15 +378,31 @@ export function runClientSimulation(
       if (targets.length === 0 || uQps <= 0) continue;
 
       // Crashed node drops all outbound traffic
-      const isDead = isFailureActive && isCrashedType && uId === resolvedTargetId;
-      if (isDead) continue;
+      const isUCrashed =
+        isFailureActive && isCrashedType && uId === resolvedTargetId;
+      if (isUCrashed) {
+        // In a cache outage (e.g. KILL_REDIS), uncached read traffic stampedes
+        // directly to its downstream database targets instead of vanishing.
+        if (["cache", "redis", "memcached"].includes(uNode.type)) {
+          const outQps = uQps;
+          const splitQps = outQps / Math.max(1, targets.length);
+          for (const tId of targets) {
+            incomingQps[tId] = (incomingQps[tId] || 0) + splitQps;
+            if (!visited.has(tId)) {
+              visited.add(tId);
+              queue.push(tId);
+            }
+          }
+        }
+        continue;
+      }
 
       let outQps = uQps;
       if (uNode.type === "cdn") {
-        outQps = uQps * (1 - 0.8 * profile.read_ratio);
+        outQps = uQps * (1 - 0.8 * safeProfile.read_ratio);
       } else if (["cache", "redis", "memcached"].includes(uNode.type)) {
-        const misses = uQps * profile.read_ratio * (1 - effectiveCacheHitRatio);
-        const writes = uQps * (1 - profile.read_ratio);
+        const misses = uQps * safeProfile.read_ratio * (1 - effectiveCacheHitRatio);
+        const writes = uQps * (1 - safeProfile.read_ratio);
         outQps = misses + writes;
       } else if (["queue", "kafka", "rabbitmq"].includes(uNode.type)) {
         const workerCapacity = targets.reduce((sum, tid) => {
@@ -300,7 +417,38 @@ export function runClientSimulation(
         accumulatedQueue[uId] = Math.min(200000, (accumulatedQueue[uId] || 0) + excess);
       }
 
-      const splitQps = outQps / targets.length;
+      // Cache stampede routing for parallel topologies:
+      const isTargetingCrashedCache =
+        isFailureActive &&
+        isCrashedType &&
+        resolvedTargetId &&
+        targets.includes(resolvedTargetId) &&
+        ["cache", "redis", "memcached"].includes(nodeMap.get(resolvedTargetId)?.type || "");
+
+      if (isTargetingCrashedCache) {
+        const dbTargets = targets.filter((t) =>
+          ["relational_db", "postgresql", "mysql", "mongodb", "cassandra", "database"].includes(
+            nodeMap.get(t)?.type || ""
+          )
+        );
+        if (dbTargets.length > 0) {
+          const nonCacheTargets = targets.filter((t) => t !== resolvedTargetId);
+          const splitQps = outQps / Math.max(1, nonCacheTargets.length);
+          for (const tId of nonCacheTargets) {
+            incomingQps[tId] = (incomingQps[tId] || 0) + splitQps;
+            if (!visited.has(tId)) {
+              visited.add(tId);
+              queue.push(tId);
+            }
+          }
+          if (resolvedTargetId) {
+            incomingQps[resolvedTargetId] = (incomingQps[resolvedTargetId] || 0) + outQps / Math.max(1, targets.length);
+          }
+          continue;
+        }
+      }
+
+      const splitQps = outQps / Math.max(1, targets.length);
       for (const tId of targets) {
         incomingQps[tId] = (incomingQps[tId] || 0) + splitQps;
         if (!visited.has(tId)) {
@@ -314,17 +462,46 @@ export function runClientSimulation(
     const nodeMetrics: SimulationNodeMetric[] = [];
 
     nodes.forEach((n) => {
+      const isClient = CLIENT_TYPES.has(n.type.toLowerCase());
       const replicas = Math.max(1, n.config.replicas || 1);
       const nodeCapacity = Math.max(200, (n.config.qps_capacity || 10000) * replicas);
-      const baseLat = Math.max(0.5, n.config.latency_ms || 1) + profile.network_latency_ms * 0.2;
+      const baseLat = Math.max(0.5, n.config.latency_ms || 1) + safeProfile.network_latency_ms * 0.2;
       const assigned = incomingQps[n.id] || 0;
 
+      if (isClient) {
+        nodePeakUtil[n.id] = 0;
+        nodeAvgUtil[n.id] += 0;
+        allLatencies.push(baseLat);
+
+        nodeMetrics.push({
+          node_id: n.id,
+          node_type: n.type,
+          cpu_percent: Math.min(25, Math.round((assigned / 50000) * 10)),
+          memory_percent: 15,
+          queue_depth: 0,
+          error_rate: 0,
+          latency_p99_ms: Math.round(baseLat),
+          status: "HEALTHY",
+          throughput_qps: Math.round(assigned),
+          utilization_percent: 0,
+          is_bottleneck: false,
+        });
+        return;
+      }
+
       const isTarget = isFailureActive && n.id === resolvedTargetId;
-      const isCallerOfDead =
-        isFailureActive && isCrashedType && (adjOut.get(n.id) || []).includes(resolvedTargetId || "");
+      const isDirectCallerOfDead = isFailureActive && isCrashedType && directCallers.has(n.id);
+      const isTransitiveCallerOfDead = isFailureActive && isCrashedType && transitiveCallers.has(n.id);
+      const isDownstreamStarved = isFailureActive && chaosFailure === "KILL_KAFKA" && downstreamFromTarget.has(n.id);
 
       const loadRatio = assigned / nodeCapacity;
       let utilPercent = Math.min(100, Math.round(loadRatio * 100));
+
+      const isDbCacheStampede =
+        isFailureActive &&
+        ["KILL_REDIS", "CACHE_FAILURE"].includes(chaosFailure) &&
+        ["relational_db", "postgresql", "mysql", "mongodb", "cassandra", "database"].includes(n.type) &&
+        loadRatio > 0.6;
 
       let cpu = Math.min(99, Math.max(5, loadRatio * 80));
       let mem = Math.min(95, Math.max(15, loadRatio * 65));
@@ -355,7 +532,7 @@ export function runClientSimulation(
           mem = 75;
           qDepth = 12000;
           errorRate = 0.15;
-          latency = baseLat + 500;
+          latency = Math.min(MAX_SERVICE_TIMEOUT_MS, baseLat + 500);
           const dropped = Math.round(assigned * errorRate);
           tickErrors += dropped;
           delivered = assigned - dropped;
@@ -365,7 +542,7 @@ export function runClientSimulation(
           mem = 50;
           qDepth = 8000;
           errorRate = 0.35;
-          latency = baseLat * 2.5;
+          latency = Math.min(MAX_SERVICE_TIMEOUT_MS, baseLat * 2.5);
           const dropped = Math.round(assigned * errorRate);
           tickErrors += dropped;
           delivered = assigned - dropped;
@@ -375,7 +552,7 @@ export function runClientSimulation(
           mem = 95;
           qDepth = 30000;
           errorRate = 0.4;
-          latency = baseLat + 800;
+          latency = Math.min(MAX_SERVICE_TIMEOUT_MS, baseLat + 800);
           utilPercent = 100;
           const dropped = Math.round(assigned * errorRate);
           tickErrors += dropped;
@@ -386,26 +563,73 @@ export function runClientSimulation(
           mem = 90;
           qDepth = 15000;
           errorRate = 0.25;
-          latency = baseLat * 2.0;
+          latency = Math.min(MAX_SERVICE_TIMEOUT_MS, baseLat * 2.0);
           const dropped = Math.round(assigned * errorRate);
           tickErrors += dropped;
           delivered = assigned - dropped;
         }
-      } else if (isCallerOfDead) {
+      } else if (isDirectCallerOfDead) {
         status = "DEGRADED";
+        cpu = Math.min(99, Math.max(50, Math.round(loadRatio * 90)));
+        mem = Math.min(95, Math.max(40, Math.round(loadRatio * 80)));
         errorRate = 0.45;
-        latency = baseLat + 350;
-        qDepth += 12000;
+        latency = Math.min(MAX_SERVICE_TIMEOUT_MS, baseLat + 400);
+        qDepth += 15000;
+        const dropped = Math.round(assigned * errorRate);
+        tickErrors += dropped;
+        delivered = assigned - dropped;
+      } else if (isTransitiveCallerOfDead) {
+        status = "DEGRADED";
+        cpu = Math.min(95, Math.max(35, Math.round(loadRatio * 75)));
+        mem = Math.min(90, Math.max(30, Math.round(loadRatio * 65)));
+        errorRate = 0.20;
+        latency = Math.min(MAX_SERVICE_TIMEOUT_MS, baseLat + 200);
+        qDepth += 8000;
+        const dropped = Math.round(assigned * errorRate);
+        tickErrors += dropped;
+        delivered = assigned - dropped;
+      } else if (isDownstreamStarved) {
+        status = "DEGRADED";
+        cpu = 5;
+        mem = 20;
+        errorRate = 0.05;
+        latency = baseLat;
+        qDepth = 0;
+        delivered = 0;
+      } else if (isDbCacheStampede) {
+        status = "DEGRADED";
+        cpu = Math.min(99, Math.max(85, Math.round(loadRatio * 95)));
+        mem = Math.min(95, Math.max(80, Math.round(loadRatio * 90)));
+        qDepth = Math.max(15000, Math.round((loadRatio - 0.6) * 25000));
+        errorRate = Math.min(0.6, Math.max(0.2, 1.0 - 0.75 / Math.max(0.76, loadRatio)));
+        latency = Math.min(MAX_SERVICE_TIMEOUT_MS, Math.round(baseLat * 4.0));
+        const dropped = Math.round(assigned * errorRate);
+        tickErrors += dropped;
+        delivered = Math.max(0, assigned - dropped);
+      } else if (isFailureActive && directCallers.has(n.id) && ["DB_OVERLOAD", "CACHE_FAILURE"].includes(chaosFailure)) {
+        status = "DEGRADED";
+        errorRate = 0.25;
+        latency = Math.min(MAX_SERVICE_TIMEOUT_MS, baseLat + 350);
+        qDepth += 10000;
+        const dropped = Math.round(assigned * errorRate);
+        tickErrors += dropped;
+        delivered = assigned - dropped;
+      } else if (isFailureActive && transitiveCallers.has(n.id) && ["DB_OVERLOAD", "CACHE_FAILURE"].includes(chaosFailure)) {
+        status = "DEGRADED";
+        errorRate = 0.12;
+        latency = Math.min(MAX_SERVICE_TIMEOUT_MS, baseLat + 150);
+        qDepth += 5000;
         const dropped = Math.round(assigned * errorRate);
         tickErrors += dropped;
         delivered = assigned - dropped;
       } else if (loadRatio > 1.0) {
         status = "DEGRADED";
-        errorRate = Math.min(0.55, (loadRatio - 1.0) * 0.45);
-        latency = baseLat * (1 + Math.pow(loadRatio, 2.4) * 3.5);
+        errorRate = Math.min(0.95, Math.max(0.05, 1.0 - 1.0 / loadRatio));
+        const queueMultiplier = Math.min(50, 1.0 + Math.pow(loadRatio, 1.5) * 2.0);
+        latency = Math.min(MAX_SERVICE_TIMEOUT_MS, Math.round(baseLat * queueMultiplier));
         const dropped = Math.round(assigned * errorRate);
         tickErrors += dropped;
-        delivered = assigned - dropped;
+        delivered = Math.max(0, assigned - dropped);
       }
 
       nodePeakUtil[n.id] = Math.max(nodePeakUtil[n.id], utilPercent);
@@ -454,7 +678,7 @@ export function runClientSimulation(
   const p99 = totalL > 0 ? allLatencies[Math.min(totalL - 1, Math.floor(totalL * 0.99))] : 120;
 
   const deliveredRequests = Math.max(0, totalRequests - totalDropped);
-  const deliveredThroughput = Math.round(deliveredRequests / Math.max(1, profile.duration_sec));
+  const deliveredThroughput = Math.round(deliveredRequests / Math.max(1, safeProfile.duration_sec));
   const overallErrorRate = Number((totalDropped / Math.max(1, totalRequests)).toFixed(4));
 
   // Average tier utilizations
@@ -489,7 +713,8 @@ export function runClientSimulation(
   let bottleneckRemediation: string | null = null;
   let suggestedAction: string | null = null;
 
-  const sortedByUtil = [...nodes].sort(
+  const serverNodes = nodes.filter((n) => !CLIENT_TYPES.has(n.type.toLowerCase()));
+  const sortedByUtil = [...serverNodes].sort(
     (a, b) => (nodePeakUtil[b.id] || 0) - (nodePeakUtil[a.id] || 0)
   );
 
@@ -510,27 +735,48 @@ export function runClientSimulation(
 
     if (["relational_db", "postgresql", "mysql", "mongodb", "cassandra"].includes(bNode.type)) {
       bottleneckType = "DATABASE";
-      bottleneckExplanation = `${bottleneckNodeName} is currently the primary bottleneck (${bottleneckUtil}% capacity saturated). Adding more application servers will not solve this because all application servers still depend on the same database.`;
-      aiBottleneckExplanation = `Architectural Bottleneck: ${bottleneckNodeName} is enduring severe read/write contention. At ${profile.peak_qps.toLocaleString()} Peak RPS (${Math.round(profile.read_ratio * 100)}% reads), direct database query execution exhausts disk IOPS and connection pools.`;
+      const isReadHeavy = safeProfile.read_ratio >= 0.7;
+      if (isReadHeavy) {
+        bottleneckExplanation = `${bottleneckNodeName} database is the primary bottleneck (${bottleneckUtil}% capacity saturated). Under ${Math.round(safeProfile.read_ratio * 100)}% read traffic, direct database queries exceed available connection pool slots (default max: 100 conns) and exhaust storage IOPS. Scaling application servers upstream will NOT resolve this, as all workers queue on the same DB lock.`;
+        aiBottleneckExplanation = `Database Read Saturation: ${bottleneckNodeName} is processing un-cached query traffic. Disk I/O read queues and table locks cascade p99 latency upstream. Remediation: Introduce an in-memory Redis cluster or read replicas with PgBouncer connection pooling.`;
 
-      if (!hasCache) {
-        bottleneckRemediation =
-          "Introduce a Redis in-memory cache in front of the database to absorb 85%+ of read queries.";
-        suggestedAction = "add_component:redis";
+        if (!hasCache) {
+          bottleneckRemediation =
+            "Place a Redis in-memory cache in front of the database to absorb 85%+ of read queries.";
+          suggestedAction = "add_component:redis";
+        } else {
+          bottleneckRemediation = `Scale database read replicas from ${bNode.config.replicas || 1} to ${(bNode.config.replicas || 1) + 2} to distribute read queries.`;
+          suggestedAction = `scale:${bNode.id}:${(bNode.config.replicas || 1) + 2}`;
+        }
       } else {
-        bottleneckRemediation = `Scale database replicas from ${bNode.config.replicas || 1} to ${(bNode.config.replicas || 1) + 2} to distribute read queries.`;
-        suggestedAction = `scale:${bNode.id}:${(bNode.config.replicas || 1) + 2}`;
+        bottleneckExplanation = `${bottleneckNodeName} database is write-saturated (${bottleneckUtil}% capacity). With ${Math.round((1 - safeProfile.read_ratio) * 100)}% write operations, WAL logging and transaction lock contention cause severe write serialization.`;
+        aiBottleneckExplanation = `Write Pipeline Bottleneck: Synchronous writes to ${bottleneckNodeName} cannot keep up with peak load. Remediation: Decouple write ingestion with an asynchronous Kafka message queue or shard the database by entity ID.`;
+        bottleneckRemediation =
+          "Decouple synchronous write operations using an asynchronous Kafka message queue buffer.";
+        suggestedAction = "add_component:kafka";
       }
-    } else if (["service", "server", "microservice"].includes(bNode.type)) {
+    } else if (["service", "server", "microservice", "worker"].includes(bNode.type)) {
       bottleneckType = "COMPUTE";
-      bottleneckExplanation = `${bottleneckNodeName} is saturated at ${bottleneckUtil}% CPU/thread capacity. Incoming request arrival rate exceeds stateless worker concurrency.`;
-      aiBottleneckExplanation = `Compute Bottleneck: ${bottleneckNodeName} is running ${bNode.config.replicas || 1} instance(s). Under peak traffic, thread pool starvation introduces cascading queuing latencies.`;
-      bottleneckRemediation = `Scale compute cluster from ${bNode.config.replicas || 1} to ${(bNode.config.replicas || 1) + 2} replicas.`;
+      bottleneckExplanation = `${bottleneckNodeName} compute tier is saturated at ${bottleneckUtil}% capacity. Running ${bNode.config.replicas || 1} instance(s), the worker thread pool is starved, causing requests to queue up in the OS TCP backlog.`;
+      aiBottleneckExplanation = `Stateless Worker Exhaustion: ${bottleneckNodeName} has insufficient concurrency to process ${safeProfile.peak_qps.toLocaleString()} Peak RPS. Each request holds worker threads during I/O operations, cascading p99 latency.`;
+      bottleneckRemediation = `Horizontally scale compute cluster from ${bNode.config.replicas || 1} to ${(bNode.config.replicas || 1) + 2} replicas.`;
       suggestedAction = `scale:${bNode.id}:${(bNode.config.replicas || 1) + 2}`;
-    } else if (["gateway", "api_gateway", "load_balancer"].includes(bNode.type)) {
+    } else if (["cache", "redis", "memcached"].includes(bNode.type)) {
+      bottleneckType = "CACHE";
+      bottleneckExplanation = `${bottleneckNodeName} cache is saturated at ${bottleneckUtil}% capacity. In-memory throughput or network bandwidth limit reached. Redis event-loop CPU is maxed out.`;
+      aiBottleneckExplanation = `Cache Tier Saturated: ${bottleneckNodeName} is enduring heavy eviction waves or high key contention. Remediation: Cluster Redis across multiple shards with primary-replica replication.`;
+      bottleneckRemediation = `Scale cache cluster to ${(bNode.config.replicas || 1) + 2} shards or add read replicas.`;
+      suggestedAction = `scale:${bNode.id}:${(bNode.config.replicas || 1) + 2}`;
+    } else if (["queue", "kafka", "rabbitmq"].includes(bNode.type)) {
+      bottleneckType = "QUEUE";
+      bottleneckExplanation = `${bottleneckNodeName} message broker backlog reached ${(accumulatedQueue[bNode.id] || 0).toLocaleString()} messages. Ingestion rate exceeds downstream worker consumption capacity.`;
+      aiBottleneckExplanation = `Queue Backpressure: ${bottleneckNodeName} partitions cannot drain fast enough. Remediation: Scale worker consumer instances and increase broker partition count.`;
+      bottleneckRemediation = "Scale downstream consumer workers and increase queue partitions.";
+      suggestedAction = `scale:${bNode.id}:${(bNode.config.replicas || 1) + 1}`;
+    } else if (["gateway", "api_gateway", "load_balancer", "cdn"].includes(bNode.type)) {
       bottleneckType = "INGRESS";
-      bottleneckExplanation = `${bottleneckNodeName} reverse proxy is saturated at ${bottleneckUtil}% capacity. Edge socket limits are bottlenecking inbound requests.`;
-      aiBottleneckExplanation = `Edge Bottleneck: Ingress proxy ${bottleneckNodeName} is dropping TCP handshakes. Enable CDN edge caching or scale proxy instances.`;
+      bottleneckExplanation = `${bottleneckNodeName} ingress proxy is saturated at ${bottleneckUtil}% capacity. File descriptor / TCP socket connection limits are exhausted by concurrent clients.`;
+      aiBottleneckExplanation = `Edge Socket Exhaustion: Reverse proxy ${bottleneckNodeName} cannot accept more TCP handshakes. Remediation: Add CDN edge caching to offload static traffic or scale reverse proxy instances.`;
       bottleneckRemediation =
         "Place CDN edge caching in front of the gateway to offload static requests.";
       suggestedAction = "add_component:cdn";
@@ -554,12 +800,26 @@ export function runClientSimulation(
   const targetNode = resolvedTargetId ? nodeMap.get(resolvedTargetId) : undefined;
   const targetName = targetNode?.name || resolvedTargetId || "target node";
 
+  const failedNodeIds = Array.from(
+    new Set(ticks.flatMap((t) => t.node_metrics.filter((m) => m.status === "CRASHED").map((m) => m.node_id)))
+  ).sort();
+
+  const degradedNodeIds = Array.from(
+    new Set(
+      ticks.flatMap((t) =>
+        t.node_metrics
+          .filter((m) => m.status === "DEGRADED" && !failedNodeIds.includes(m.node_id) && !CLIENT_TYPES.has(m.node_type.toLowerCase()))
+          .map((m) => m.node_id)
+      )
+    )
+  ).sort();
+
   if (chaosFailure === "KILL_REDIS") {
     chaosReport = {
       scenario: "KILL_REDIS",
       title: "Redis Cache Outage & Database IOPS Spike",
-      failed_node_ids: resolvedTargetId ? [resolvedTargetId] : [],
-      degraded_node_ids: dbNodes.map((n) => n.id),
+      failed_node_ids: failedNodeIds,
+      degraded_node_ids: degradedNodeIds,
       what_happened: `Redis cache '${targetName}' crashed unexpectedly. Cache hit ratio plummeted to 0%, dumping 100% of read traffic directly onto primary database.`,
       why_it_happened:
         "Cache instance failed without automatic failover. Downstream relational DB experienced connection pool exhaustion and disk IOPS lock.",
@@ -575,8 +835,8 @@ export function runClientSimulation(
     chaosReport = {
       scenario: "KILL_POSTGRES",
       title: "Primary Database Outage & Write Pipeline Disruption",
-      failed_node_ids: resolvedTargetId ? [resolvedTargetId] : [],
-      degraded_node_ids: computeNodes.map((n) => n.id),
+      failed_node_ids: failedNodeIds,
+      degraded_node_ids: degradedNodeIds,
       what_happened: `Primary database '${targetName}' became unreachable. All persistent write transactions failed and uncached queries timed out.`,
       why_it_happened:
         "Database node encountered storage exhaustion, hardware failure, or primary node panic without hot standby promotion.",
@@ -592,8 +852,8 @@ export function runClientSimulation(
     chaosReport = {
       scenario: "KILL_KAFKA",
       title: "Message Broker Cluster Failure",
-      failed_node_ids: resolvedTargetId ? [resolvedTargetId] : [],
-      degraded_node_ids: computeNodes.map((n) => n.id),
+      failed_node_ids: failedNodeIds,
+      degraded_node_ids: degradedNodeIds,
       what_happened: `Message broker '${targetName}' stopped accepting messages. Ingestion buffers saturated and worker threads starved.`,
       why_it_happened:
         "Broker quorum loss or disk write saturation halted log segment writes.",
@@ -608,8 +868,8 @@ export function runClientSimulation(
     chaosReport = {
       scenario: "KILL_APP_SERVER",
       title: "Application Compute Tier Failure",
-      failed_node_ids: resolvedTargetId ? [resolvedTargetId] : [],
-      degraded_node_ids: gatewayNodes.map((n) => n.id),
+      failed_node_ids: failedNodeIds,
+      degraded_node_ids: degradedNodeIds,
       what_happened: `App compute cluster '${targetName}' terminated unexpectedly. Upstream load balancers dropped incoming HTTP connections with 502s.`,
       why_it_happened:
         "OOM error, unhandled exception, or container node eviction took down the application process.",
@@ -624,8 +884,8 @@ export function runClientSimulation(
     chaosReport = {
       scenario: "LATENCY_SPIKE",
       title: "Cascading Latency Spike",
-      failed_node_ids: [],
-      degraded_node_ids: resolvedTargetId ? [resolvedTargetId] : nodes.map((n) => n.id),
+      failed_node_ids: failedNodeIds,
+      degraded_node_ids: degradedNodeIds,
       what_happened: `Network latency degraded by 500ms on '${targetName}', causing request queues to back up and p99 latency to spike to ${Math.round(p99)}ms.`,
       why_it_happened:
         "Cross-region networking contention or un-indexed query execution locking threads.",
@@ -640,8 +900,8 @@ export function runClientSimulation(
     chaosReport = {
       scenario: "DROP_REQUESTS",
       title: "Ingress Packet Loss & Request Drop Storm",
-      failed_node_ids: [],
-      degraded_node_ids: (gatewayNodes.length > 0 ? gatewayNodes : ingressNodes).map((n) => n.id),
+      failed_node_ids: failedNodeIds,
+      degraded_node_ids: degradedNodeIds,
       what_happened:
         "35% of incoming network requests were dropped before reaching application logic.",
       why_it_happened:
@@ -657,8 +917,8 @@ export function runClientSimulation(
     chaosReport = {
       scenario: "DB_OVERLOAD",
       title: "Database IOPS & Connection Pool Exhaustion",
-      failed_node_ids: [],
-      degraded_node_ids: resolvedTargetId ? [resolvedTargetId] : dbNodes.map((n) => n.id),
+      failed_node_ids: failedNodeIds,
+      degraded_node_ids: degradedNodeIds,
       what_happened: `Database '${targetName}' reached 100% capacity saturation. Connection queues overflowed.`,
       why_it_happened:
         "Unthrottled write volume and complex table scans overwhelmed available DB thread workers.",
@@ -673,8 +933,8 @@ export function runClientSimulation(
     chaosReport = {
       scenario: "CACHE_FAILURE",
       title: "Cache Stampede (Thundering Herd Outage)",
-      failed_node_ids: [],
-      degraded_node_ids: [...cacheNodes.map((n) => n.id), ...dbNodes.map((n) => n.id)],
+      failed_node_ids: failedNodeIds,
+      degraded_node_ids: degradedNodeIds,
       what_happened:
         "Cache keys expired without jitter, causing thousands of concurrent requests to hammer the database at once.",
       why_it_happened:
@@ -690,8 +950,8 @@ export function runClientSimulation(
     chaosReport = {
       scenario: "KILL_NODE",
       title: `Component Failure: ${targetName}`,
-      failed_node_ids: resolvedTargetId ? [resolvedTargetId] : [],
-      degraded_node_ids: [],
+      failed_node_ids: failedNodeIds,
+      degraded_node_ids: degradedNodeIds,
       what_happened: `Node '${targetName}' was terminated. Traffic routed to this node was dropped.`,
       why_it_happened: "Target node failure without active failover.",
       mitigation_strategies: [
@@ -729,10 +989,12 @@ export function runClientSimulation(
     peak_observed_qps: peakObservedQps,
     overall_p99_latency_ms: Math.round(p99),
     blast_radius_summary:
-      chaosReport
+      chaosFailure === "HEAL_SYSTEM"
+        ? "All systems healed. Injected faults cleared; all components and queue buffers restored to nominal healthy operational state."
+        : chaosReport
         ? `${chaosReport.title}: ${chaosReport.what_happened}`
         : totalDropped > 0
-        ? `Traffic surge saturated system capacity, dropping ${totalDropped.toLocaleString()} requests across ${Math.round(profile.duration_sec)} seconds.`
+        ? `Traffic surge saturated system capacity, dropping ${totalDropped.toLocaleString()} requests across ${Math.round(safeProfile.duration_sec)} seconds.`
         : "Nominal simulation. All requests processed within provisioned tier capacities.",
     incident_rca:
       chaosReport
@@ -788,7 +1050,8 @@ export async function runBackendSimulation(
       },
     };
 
-    const response = await fetch("http://127.0.0.1:8000/api/v1/simulations/run", {
+    const baseUrl = API_BASE || "http://127.0.0.1:8000";
+    const response = await fetch(`${baseUrl}/api/v1/simulations/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

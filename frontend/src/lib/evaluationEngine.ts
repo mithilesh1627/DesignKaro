@@ -289,17 +289,17 @@ export function computeGraphDiff(
     const n1 = v1Nodes.get(n2.id);
     if (n1) {
       const deltas: Record<string, { old: any; new: any }> = {};
-      const c1 = n1.config;
-      const c2 = n2.config;
+      const c1 = n1.config || ({} as any);
+      const c2 = n2.config || ({} as any);
 
-      if (c1.replicas !== c2.replicas) {
-        deltas["replicas"] = { old: c1.replicas, new: c2.replicas };
-      }
-      if (c1.qps_capacity !== c2.qps_capacity) {
-        deltas["qps_capacity"] = { old: c1.qps_capacity, new: c2.qps_capacity };
-      }
-      if (c1.latency_ms !== c2.latency_ms) {
-        deltas["latency_ms"] = { old: c1.latency_ms, new: c2.latency_ms };
+      // Compare all configuration properties
+      const allKeys = new Set([...Object.keys(c1), ...Object.keys(c2)]);
+      for (const key of allKeys) {
+        const val1 = (c1 as any)[key];
+        const val2 = (c2 as any)[key];
+        if (JSON.stringify(val1) !== JSON.stringify(val2)) {
+          deltas[key] = { old: val1, new: val2 };
+        }
       }
 
       if (Object.keys(deltas).length > 0) {

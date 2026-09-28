@@ -175,6 +175,7 @@ async def init_db():
                 bio="Designing resilient, high-throughput distributed systems at 1M+ QPS.",
                 experience_level="advanced",
                 current_rank="Principal Architect",
+                target_role="Staff Systems Architect",
                 target_qps=100000,
             )
             session.add(demo_profile)

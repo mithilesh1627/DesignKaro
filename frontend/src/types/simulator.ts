@@ -16,6 +16,8 @@ export interface ArchitectureNodeConfig {
   latency_ms: number;
   memory_gb?: number;
   storage_gb?: number;
+  read_capacity?: number;
+  write_capacity?: number;
   cache_policy?: "LRU" | "LFU" | "FIFO" | "ARC";
   cache_ttl_sec?: number;
   replication_mode?: "sync" | "async" | "semi_sync";

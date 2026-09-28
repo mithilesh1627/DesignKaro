@@ -18,12 +18,18 @@ class RunSimulationPayload(BaseModel):
 
 
 @router.post("/run", response_model=SimulationResponse)
+@router.post("/simulate", response_model=SimulationResponse, summary="Simulation alias (canonical: /run)")
 async def run_traffic_simulation(
     payload: RunSimulationPayload,
 ) -> SimulationResponse:
-    """Run discrete-event traffic simulation and chaos failure injection across architecture graph."""
+    """Run discrete-event traffic simulation and chaos failure injection across architecture graph.
+    
+    Canonical endpoint: POST /api/v1/simulations/run
+    Compatibility alias: POST /api/v1/simulations/simulate, POST /api/v1/simulator/simulate
+    """
     return traffic_simulator.run_simulation(
         graph=payload.graph_data,
         traffic=payload.traffic,
         failure=payload.failure,
     )
+

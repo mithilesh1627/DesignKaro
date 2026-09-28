@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { X, CheckCircle2, ArrowRight, Compass, ShieldAlert, Sparkles } from "lucide-react";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 
 interface QuickDiagnosticModalProps {
   isOpen: boolean;
@@ -51,9 +53,19 @@ export const QuickDiagnosticModal: React.FC<QuickDiagnosticModalProps> = ({
   isOpen,
   onClose,
 }) => {
+  const router = useRouter();
+  const modalRef = useFocusTrap(isOpen, onClose);
   const [currentStep, setCurrentStep] = useState(0);
   const [answers, setAnswers] = useState<string[]>([]);
   const [result, setResult] = useState<"Beginner" | "Intermediate" | "Advanced" | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setCurrentStep(0);
+      setAnswers([]);
+      setResult(null);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -84,13 +96,30 @@ export const QuickDiagnosticModal: React.FC<QuickDiagnosticModalProps> = ({
     setResult(null);
   };
 
+  const handleEnterTrack = () => {
+    onClose();
+    router.push("/learn");
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-      <div className="relative w-full max-w-xl rounded-xl border border-slate-800 bg-surface-900 p-6 shadow-2xl">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150"
+    >
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="diagnostic-modal-title"
+        className="relative w-full max-w-xl rounded-xl border border-surface-border bg-surface-overlay p-6 shadow-2xl"
+      >
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 p-1 text-slate-400 hover:text-white rounded-md hover:bg-slate-800 transition-colors"
+          aria-label="Close diagnostic evaluation"
+          className="absolute right-2 top-2 w-11 h-11 flex items-center justify-center text-slate-400 hover:text-white rounded-md hover:bg-slate-800 transition-colors"
         >
           <X className="h-5 w-5" />
         </button>
@@ -104,9 +133,9 @@ export const QuickDiagnosticModal: React.FC<QuickDiagnosticModalProps> = ({
         {!result ? (
           <div>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-white">
+              <h2 id="diagnostic-modal-title" className="text-lg font-bold text-white">
                 How good are you at System Design?
-              </h3>
+              </h2>
               <span className="text-xs font-mono text-slate-400">
                 Question {currentStep + 1} of {DIAGNOSTIC_QUESTIONS.length}
               </span>
@@ -140,13 +169,24 @@ export const QuickDiagnosticModal: React.FC<QuickDiagnosticModalProps> = ({
                 </button>
               ))}
             </div>
+
+            <div className="mt-5 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+              <button
+                type="button"
+                onClick={onClose}
+                className="min-h-[44px] inline-flex items-center hover:text-slate-200 transition-colors underline-offset-4 hover:underline"
+              >
+                Skip for now
+              </button>
+              <span className="text-[11px] font-mono text-slate-500">Press Esc to close</span>
+            </div>
           </div>
         ) : (
           <div className="text-center py-4">
             <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-400 mb-3">
               <Sparkles className="h-6 w-6" />
             </div>
-            <h3 className="text-xl font-bold text-white mb-1">Diagnostic Complete</h3>
+            <h2 id="diagnostic-modal-title" className="text-xl font-bold text-white mb-1">Diagnostic Complete</h2>
             <p className="text-xs text-slate-400 font-mono mb-4">
               Your Recommended Starting Track:
             </p>
@@ -167,13 +207,13 @@ export const QuickDiagnosticModal: React.FC<QuickDiagnosticModalProps> = ({
             <div className="flex gap-3 justify-center">
               <button
                 onClick={handleReset}
-                className="px-4 py-2 rounded-md border border-slate-800 text-xs font-mono text-slate-400 hover:text-white transition-colors"
+                className="min-h-[44px] px-4 py-2.5 rounded-md border border-slate-800 text-xs font-mono text-slate-400 hover:text-white transition-colors inline-flex items-center justify-center"
               >
                 Retake
               </button>
               <button
-                onClick={onClose}
-                className="inline-flex items-center gap-2 px-5 py-2 rounded-md bg-sky-500 hover:bg-sky-400 text-xs font-semibold text-slate-950 transition-colors"
+                onClick={handleEnterTrack}
+                className="min-h-[44px] inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-md bg-sky-400 hover:bg-sky-300 text-xs font-bold text-sky-950 transition-colors"
               >
                 <span>Enter Personalized Track</span>
                 <ArrowRight className="h-3.5 w-3.5" />

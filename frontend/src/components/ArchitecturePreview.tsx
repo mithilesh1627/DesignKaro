@@ -125,7 +125,7 @@ export const ArchitecturePreview: React.FC = () => {
   };
 
   return (
-    <div className="w-full rounded-xl border border-slate-800 bg-surface-950/80 shadow-2xl overflow-hidden backdrop-blur-sm">
+    <div className="w-full rounded-xl border border-surface-border bg-surface-ground/90 shadow-2xl overflow-hidden backdrop-blur-sm">
       {/* Canvas Top Bar */}
       <div className="flex flex-wrap items-center justify-between border-b border-slate-800 bg-slate-900/60 px-4 py-2.5 text-xs font-mono">
         <div className="flex items-center gap-3">
@@ -147,7 +147,7 @@ export const ArchitecturePreview: React.FC = () => {
           <button
             onClick={handleRunTraffic}
             disabled={isSimulating}
-            className="flex items-center gap-1.5 rounded bg-sky-500 hover:bg-sky-400 px-2.5 py-1 text-slate-950 font-bold transition-all text-xs"
+            className="flex items-center gap-1.5 rounded bg-sky-500 hover:bg-sky-400 px-2.5 py-1 text-sky-950 font-bold transition-all text-xs"
           >
             {isSimulating ? (
               <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -272,8 +272,8 @@ export const ArchitecturePreview: React.FC = () => {
                   {/* Connecting Flow Line */}
                   {index < NODES.length - 1 && (
                     <div className="flex justify-center py-1">
-                      <div className="h-4 w-0.5 bg-gradient-to-b from-sky-500/80 to-sky-500/20 relative">
-                        <div className="absolute top-1 -left-0.5 h-1.5 w-1.5 rounded-full bg-sky-400 animate-ping"></div>
+                      <div className="h-4 w-0.5 bg-sky-500/40 relative">
+                        <div className="absolute top-1 -left-0.5 h-1.5 w-1.5 rounded-full bg-sky-400"></div>
                       </div>
                     </div>
                   )}

@@ -10,12 +10,18 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@types/katex": "^0.16.8",
     "@xyflow/react": "^12.3.6",
     "clsx": "^2.1.1",
+    "katex": "^0.18.9",
     "lucide-react": "^0.468.0",
     "next": "14.2.23",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "tailwind-merge": "^2.6.0",
     "zustand": "^5.0.3"
   },

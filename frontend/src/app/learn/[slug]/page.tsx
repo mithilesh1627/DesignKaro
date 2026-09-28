@@ -31,6 +31,11 @@ import { Footer } from "@/components/Footer";
 import { AuthModal } from "@/components/AuthModal";
 import { useAuthStore } from "@/lib/authStore";
 import { API_BASE } from "@/lib/api";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 
 interface LessonData {
   id: string;
@@ -620,196 +625,182 @@ const LESSON_DECISION_MATRICES: Record<string, DecisionChallenge> = {
   },
 };
 
-// Formats inline text with bold, inline code, and math symbols
-function renderInline(text: string): React.ReactNode {
-  const parts: React.ReactNode[] = [];
-  const regex = /(\*\*[^*]+\*\*|`[^`]+`|\$[^$]+\$)/g;
-  let lastIdx = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIdx) {
-      parts.push(text.substring(lastIdx, match.index));
-    }
-    const token = match[0];
-    if (token.startsWith("**") && token.endsWith("**")) {
-      parts.push(
-        <strong key={match.index} className="font-semibold text-white">
-          {token.slice(2, -2)}
-        </strong>
-      );
-    } else if (token.startsWith("`") && token.endsWith("`")) {
-      parts.push(
-        <code
-          key={match.index}
-          className="px-1.5 py-0.5 rounded bg-slate-800/80 font-mono text-xs text-sky-300 border border-slate-700/50"
-        >
-          {token.slice(1, -1)}
-        </code>
-      );
-    } else if (token.startsWith("$") && token.endsWith("$")) {
-      const formula = token
-        .slice(1, -1)
-        .replace(/\\times/g, "×")
-        .replace(/\\approx/g, "≈")
-        .replace(/\\lambda/g, "λ")
-        .replace(/\\text\{([^}]+)\}/g, "$1");
-      parts.push(
-        <span
-          key={match.index}
-          className="font-mono text-amber-300 font-semibold px-1 py-0.5 bg-amber-500/10 rounded border border-amber-500/20 text-xs inline-block mx-0.5"
-        >
-          {formula}
-        </span>
-      );
-    }
-    lastIdx = regex.lastIndex;
-  }
-  if (lastIdx < text.length) {
-    parts.push(text.substring(lastIdx));
-  }
-  return parts.length > 0 ? parts : text;
-}
-
-// Renders markdown tables cleanly
-function MarkdownTable({ lines }: { lines: string[] }) {
-  const headerLine = lines[0];
-  const dataLines = lines.slice(2);
-
-  const parseCells = (row: string) =>
-    row
-      .split("|")
-      .map((c) => c.trim())
-      .filter((_, idx, arr) => idx > 0 && idx < arr.length - 1);
-
-  const headers = parseCells(headerLine);
-
+// Rich structured markdown & LaTeX renderer powered by react-markdown + KaTeX
+function LessonSectionRenderer({ sectionText }: { sectionText: string }) {
   return (
-    <div className="overflow-x-auto my-4 rounded-lg border border-slate-800 bg-slate-950/60 shadow-md">
-      <table className="min-w-full text-xs text-left divide-y divide-slate-800">
-        <thead className="bg-slate-900/90 text-sky-400 font-mono font-semibold">
-          <tr>
-            {headers.map((h, i) => (
-              <th key={i} className="px-3.5 py-2.5">
-                {renderInline(h)}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-800/60">
-          {dataLines.map((row, rowIdx) => {
-            const cells = parseCells(row);
+    <div className="prose prose-invert max-w-none text-zinc-300 font-sans">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={{
+          h1: ({ children, ...props }) => (
+            <h1
+              className="text-xl sm:text-2xl font-bold font-display text-zinc-100 tracking-tight mt-6 mb-3"
+              {...props}
+            >
+              {children}
+            </h1>
+          ),
+          h2: ({ children, ...props }) => (
+            <h2
+              className="text-lg sm:text-xl font-semibold font-display text-zinc-100 tracking-tight mt-7 mb-3.5 border-b border-zinc-800/80 pb-2"
+              {...props}
+            >
+              {children}
+            </h2>
+          ),
+          h3: ({ children, ...props }) => (
+            <h3
+              className="text-base sm:text-lg font-semibold font-sans text-zinc-200 mt-5 mb-2.5"
+              {...props}
+            >
+              {children}
+            </h3>
+          ),
+          h4: ({ children, ...props }) => (
+            <h4
+              className="text-sm sm:text-base font-semibold font-sans text-zinc-300 mt-4 mb-2"
+              {...props}
+            >
+              {children}
+            </h4>
+          ),
+          p: ({ children, ...props }) => (
+            <p
+              className="text-sm sm:text-[15px] text-zinc-300 leading-relaxed my-3 font-sans"
+              {...props}
+            >
+              {children}
+            </p>
+          ),
+          ul: ({ children, ...props }) => (
+            <ul
+              className="list-disc pl-6 my-3.5 space-y-1.5 text-sm sm:text-[15px] text-zinc-300 marker:text-zinc-500"
+              {...props}
+            >
+              {children}
+            </ul>
+          ),
+          ol: ({ children, ...props }) => (
+            <ol
+              className="list-decimal pl-6 my-3.5 space-y-1.5 text-sm sm:text-[15px] text-zinc-300 marker:text-zinc-500"
+              {...props}
+            >
+              {children}
+            </ol>
+          ),
+          li: ({ children, ...props }) => (
+            <li className="leading-relaxed text-zinc-300 pl-1" {...props}>
+              {children}
+            </li>
+          ),
+          blockquote: ({ children, ...props }) => (
+            <blockquote
+              className="border-l border-zinc-700 bg-zinc-900/60 px-4 py-2.5 my-4 rounded-r-md text-sm sm:text-[15px] text-zinc-300 italic shadow-sm"
+              {...props}
+            >
+              {children}
+            </blockquote>
+          ),
+          code: ({ className, children, ...props }) => {
+            const isBlock = Boolean(className) || (typeof children === "string" && children.includes("\n"));
+            if (isBlock) {
+              return (
+                <code
+                  className="font-mono text-xs sm:text-[13px] leading-relaxed text-zinc-300"
+                  {...props}
+                >
+                  {children}
+                </code>
+              );
+            }
             return (
-              <tr key={rowIdx} className="hover:bg-slate-900/40 transition-colors">
-                {cells.map((c, cellIdx) => (
-                  <td key={cellIdx} className="px-3.5 py-2 text-slate-300 leading-relaxed">
-                    {renderInline(c)}
-                  </td>
-                ))}
-              </tr>
+              <code
+                className="px-1.5 py-0.5 rounded bg-zinc-800/90 font-mono text-xs sm:text-[13px] text-sky-300 border border-zinc-700/60"
+                {...props}
+              >
+                {children}
+              </code>
             );
-          })}
-        </tbody>
-      </table>
+          },
+          pre: ({ children, ...props }) => (
+            <div className="relative my-4 rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs sm:text-[13px] text-zinc-300 shadow-inner overflow-x-auto">
+              <pre className="leading-relaxed whitespace-pre font-mono" {...props}>
+                {children}
+              </pre>
+            </div>
+          ),
+          table: ({ children, ...props }) => (
+            <div className="overflow-x-auto my-5 rounded-lg border border-zinc-800 bg-zinc-950/70 shadow-md">
+              <table
+                className="min-w-full text-xs sm:text-sm text-left divide-y divide-zinc-800"
+                {...props}
+              >
+                {children}
+              </table>
+            </div>
+          ),
+          thead: ({ children, ...props }) => (
+            <thead
+              className="bg-zinc-900/90 text-sky-400 font-mono font-semibold"
+              {...props}
+            >
+              {children}
+            </thead>
+          ),
+          th: ({ children, ...props }) => (
+            <th
+              className="px-4 py-3 font-mono text-xs uppercase tracking-wider text-sky-400 font-semibold"
+              {...props}
+            >
+              {children}
+            </th>
+          ),
+          tbody: ({ children, ...props }) => (
+            <tbody className="divide-y divide-zinc-800/60" {...props}>
+              {children}
+            </tbody>
+          ),
+          tr: ({ children, ...props }) => (
+            <tr className="hover:bg-zinc-900/40 transition-colors" {...props}>
+              {children}
+            </tr>
+          ),
+          td: ({ children, ...props }) => (
+            <td
+              className="px-4 py-2.5 text-zinc-300 leading-relaxed font-sans text-xs sm:text-sm"
+              {...props}
+            >
+              {children}
+            </td>
+          ),
+          strong: ({ children, ...props }) => (
+            <strong className="font-semibold text-white" {...props}>
+              {children}
+            </strong>
+          ),
+          em: ({ children, ...props }) => (
+            <em className="italic text-zinc-200" {...props}>
+              {children}
+            </em>
+          ),
+          hr: ({ ...props }) => (
+            <hr className="my-6 border-zinc-800" {...props} />
+          ),
+          a: ({ children, ...props }) => (
+            <a
+              className="text-sky-400 hover:text-sky-300 underline underline-offset-2 transition-colors"
+              {...props}
+            >
+              {children}
+            </a>
+          ),
+        }}
+      >
+        {sectionText}
+      </ReactMarkdown>
     </div>
   );
-}
-
-// Structured section component
-function LessonSectionRenderer({ sectionText }: { sectionText: string }) {
-  const lines = sectionText.split("\n");
-  const elements: React.ReactNode[] = [];
-
-  let inCodeBlock = false;
-  let codeBlockLines: string[] = [];
-  let inTable = false;
-  let tableLines: string[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Handle code blocks
-    if (line.trim().startsWith("```")) {
-      if (inCodeBlock) {
-        elements.push(
-          <div
-            key={`code-${i}`}
-            className="my-4 rounded-xl border border-slate-800 bg-slate-950 p-4 font-mono text-xs text-slate-300 shadow-inner overflow-x-auto"
-          >
-            <pre className="leading-relaxed whitespace-pre font-mono">{codeBlockLines.join("\n")}</pre>
-          </div>
-        );
-        codeBlockLines = [];
-        inCodeBlock = false;
-      } else {
-        inCodeBlock = true;
-      }
-      continue;
-    }
-
-    if (inCodeBlock) {
-      codeBlockLines.push(line);
-      continue;
-    }
-
-    // Handle markdown tables
-    if (line.trim().startsWith("|") && line.trim().endsWith("|")) {
-      inTable = true;
-      tableLines.push(line);
-      continue;
-    } else if (inTable) {
-      elements.push(<MarkdownTable key={`table-${i}`} lines={tableLines} />);
-      tableLines = [];
-      inTable = false;
-    }
-
-    // Headers
-    if (line.startsWith("# ")) {
-      elements.push(
-        <h1 key={i} className="text-xl sm:text-2xl font-extrabold text-white tracking-tight mt-6 mb-3">
-          {renderInline(line.slice(2))}
-        </h1>
-      );
-    } else if (line.startsWith("## ")) {
-      elements.push(
-        <h2 key={i} className="text-base sm:text-lg font-bold text-sky-400 tracking-tight mt-5 mb-2.5 flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-sky-400" />
-          <span>{renderInline(line.slice(3))}</span>
-        </h2>
-      );
-    } else if (line.startsWith("### ")) {
-      elements.push(
-        <h3 key={i} className="text-sm font-bold text-white tracking-tight mt-4 mb-2">
-          {renderInline(line.slice(4))}
-        </h3>
-      );
-    } else if (line.startsWith("- ")) {
-      elements.push(
-        <li key={i} className="ml-5 list-disc text-xs text-slate-300 leading-relaxed my-1">
-          {renderInline(line.slice(2))}
-        </li>
-      );
-    } else if (/^\d+\.\s/.test(line)) {
-      const content = line.replace(/^\d+\.\s/, "");
-      elements.push(
-        <li key={i} className="ml-5 list-decimal text-xs text-slate-300 leading-relaxed my-1">
-          {renderInline(content)}
-        </li>
-      );
-    } else if (line.trim().length > 0) {
-      elements.push(
-        <p key={i} className="text-xs text-slate-300 leading-relaxed my-2.5">
-          {renderInline(line)}
-        </p>
-      );
-    }
-  }
-
-  if (inTable && tableLines.length > 0) {
-    elements.push(<MarkdownTable key="table-end" lines={tableLines} />);
-  }
-
-  return <div>{elements}</div>;
 }
 
 export default function LessonDetailPage() {
@@ -842,7 +833,7 @@ export default function LessonDetailPage() {
   const isUserLoggedIn = mounted && isAuthenticated && !!user && !!accessToken;
 
   useEffect(() => {
-    if (!isUserLoggedIn || !slug) {
+    if (!slug) {
       setIsLoading(false);
       return;
     }
@@ -867,7 +858,7 @@ export default function LessonDetailPage() {
     };
 
     fetchLesson();
-  }, [slug, isUserLoggedIn, accessToken]);
+  }, [slug, accessToken]);
 
   const currentExercise = LESSON_EXERCISES[slug] || {
     question: `Evaluate the trade-offs of ${lesson?.title || "this pattern"} in production. Identify the primary capacity constraint.`,
@@ -923,160 +914,72 @@ export default function LessonDetailPage() {
     setSelectedOptionId(option.id);
     setDecisionFeedback(option);
   };
-  if (!mounted) {
+  if (!mounted || isLoading) {
     return (
-      <div className="min-h-screen w-full bg-[#050914] flex flex-col items-center justify-center font-mono">
-        <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center animate-pulse mb-4">
-          <BookOpen className="w-6 h-6 text-cyan-400" />
-        </div>
-        <p className="text-xs text-slate-400">Verifying session...</p>
-      </div>
-    );
-  }
-
-  if (!isUserLoggedIn) {
-    return (
-      <div className="min-h-screen w-full bg-[#050914] flex flex-col text-slate-200">
+      <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans">
         <Navigation />
-
-        <div className="flex-1 flex items-center justify-center p-4 sm:p-6 lg:p-8">
-          <div className="max-w-lg w-full rounded-3xl border border-white/[0.08] bg-[#070d1a]/90 backdrop-blur-2xl p-6 sm:p-8 text-center shadow-2xl relative overflow-hidden">
-            {/* Ambient background glow */}
-            <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-64 h-64 bg-cyan-500/15 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-24 left-1/2 -translate-x-1/2 w-64 h-64 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
-
-            {/* Security Shield / Lock Icon */}
-            <div className="relative mx-auto mb-5 w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-500/20 via-sky-500/10 to-indigo-500/20 border border-cyan-500/30 flex items-center justify-center shadow-lg shadow-cyan-500/10">
-              <ShieldAlert className="w-8 h-8 text-cyan-400" />
-              <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-slate-900 border border-cyan-500/50 flex items-center justify-center">
-                <Lock className="w-2.5 h-2.5 text-cyan-300" />
-              </span>
-            </div>
-
-            {/* Badge */}
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-800/40 text-[10px] font-mono text-cyan-300 uppercase tracking-widest font-semibold mb-3">
-              Authentication Required
-            </div>
-
-            {/* Title & Description */}
-            <h1 className="text-2xl sm:text-3xl font-bold font-display text-white tracking-tight mb-2">
-              Sign In to Access Lesson
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-400 font-mono leading-relaxed mb-6">
-              The full architectural deep dive, real-world failure mode trade-offs, and interactive terminal exercises require an active developer session.
-            </p>
-
-            {/* Feature Highlights */}
-            <div className="text-left p-4 rounded-2xl border border-white/[0.06] bg-slate-950/60 mb-6 space-y-2 text-xs font-mono">
-              <div className="flex items-center gap-2 text-slate-300">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>Production system patterns &amp; capacity sizing formulas</span>
-              </div>
-              <div className="flex items-center gap-2 text-slate-300">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>Interactive decision matrices &amp; trade-off evaluation</span>
-              </div>
-              <div className="flex items-center gap-2 text-slate-300">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>XP progression &amp; skill graph telemetry tracking</span>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button
-                onClick={() => setAuthModalOpen(true)}
-                className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-500 hover:from-cyan-400 hover:to-sky-400 text-slate-950 font-bold font-mono text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 active:scale-95 transition"
-              >
-                <LogIn className="w-4 h-4" />
-                <span>Sign In / Register</span>
-              </button>
-              <Link
-                href="/learn"
-                className="py-3 px-4 rounded-xl border border-white/[0.1] bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 hover:text-white font-mono text-xs flex items-center justify-center gap-1.5 transition"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Return to Curriculum</span>
-              </Link>
-            </div>
-          </div>
-        </div>
-
-        <Footer />
-
-        <AuthModal
-          isOpen={authModalOpen}
-          onClose={() => setAuthModalOpen(false)}
-        />
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <>
-        <Navigation />
-        <div className="flex-1 flex items-center justify-center py-32 text-slate-400 font-mono text-xs">
-          <Loader2 className="h-6 w-6 animate-spin text-sky-400 mr-2" />
-          <span>Loading Architectural Lesson...</span>
+        <div className="flex-1 flex items-center justify-center py-32 text-zinc-400 text-xs">
+          <Loader2 className="h-5 w-5 animate-spin text-blue-500 mr-2" />
+          <span>Loading lesson content...</span>
         </div>
         <Footer />
-      </>
+      </div>
     );
   }
 
   if (!lesson) {
     return (
-      <>
+      <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans">
         <Navigation />
         <div className="flex-1 max-w-4xl mx-auto px-4 py-20 text-center">
-          <h2 className="text-xl font-bold text-white mb-2">Lesson Not Found</h2>
-          <Link href="/learn" className="text-xs font-mono text-sky-400 hover:underline">
-            ← Return to Curriculum Dashboard
+          <h2 className="text-xl font-semibold text-zinc-100 mb-2">Lesson Not Found</h2>
+          <p className="text-xs text-zinc-400 mb-4">The requested architectural lesson could not be located.</p>
+          <Link href="/learn" className="text-xs font-medium text-blue-400 hover:underline">
+            ← Return to Curriculum
           </Link>
         </div>
         <Footer />
-      </>
+      </div>
     );
   }
 
   return (
-    <>
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans">
       <Navigation />
 
-      <main className="flex-1 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main id="main-content" tabIndex={-1} className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 focus:outline-none">
         {/* Breadcrumb Navigation */}
         <div className="flex items-center justify-between gap-4 mb-6">
           <Link
             href="/learn"
-            className="inline-flex items-center gap-1.5 text-xs font-mono text-slate-400 hover:text-sky-400 transition-colors"
+            className="inline-flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             <span>Curriculum: {lesson.topic_title}</span>
           </Link>
 
-          <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
-            <Clock className="h-3.5 w-3.5 text-slate-500" />
+          <div className="flex items-center gap-2 text-xs text-zinc-400">
+            <Clock className="h-3.5 w-3.5 text-zinc-500" />
             <span>{lesson.estimated_minutes} min read</span>
           </div>
         </div>
 
         {/* Completion Toast Notification */}
         {completionToast && (
-          <div className="mb-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-mono flex items-center gap-3 shadow-lg animate-in fade-in slide-in-from-top-2">
-            <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
-            <span className="flex-1 font-semibold">{completionToast}</span>
+          <div className="mb-6 p-3.5 rounded-md bg-emerald-950/80 border border-emerald-800 text-emerald-300 text-xs flex items-center gap-3 shadow-md animate-in fade-in">
+            <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+            <span className="flex-1 font-medium">{completionToast}</span>
           </div>
         )}
 
         {/* Lesson Header with Contextual Action CTAs */}
-        <div className="rounded-xl border border-slate-800 bg-surface-900/80 p-6 mb-6">
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-6 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 uppercase tracking-wider mb-2 inline-block">
-                Dimension {lesson.order_index} of 10 • Production Standard
+              <span className="text-xs px-2.5 py-1 rounded bg-zinc-800 text-zinc-300 border border-zinc-700 font-medium mb-2.5 inline-block">
+                Dimension {lesson.order_index} of 10 • Architecture Standard
               </span>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+              <h1 className="text-2xl sm:text-3xl font-semibold text-zinc-100 tracking-tight font-sans">
                 {lesson.title}
               </h1>
             </div>
@@ -1084,20 +987,20 @@ export default function LessonDetailPage() {
             {/* Action CTAs */}
             <div className="flex flex-wrap items-center gap-2.5 shrink-0">
               <Link
-                href={`/design?topic=${lesson.topic_slug}&title=${encodeURIComponent(lesson.title)}`}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sky-300 text-xs font-mono font-bold transition-all shadow-sm"
+                href={`/simulator?topic=${encodeURIComponent(lesson.topic_slug)}`}
+                className="min-h-[44px] inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-md bg-zinc-800 hover:bg-zinc-750 border border-zinc-700 text-zinc-200 text-xs sm:text-sm font-medium transition"
               >
-                <Layers className="h-3.5 w-3.5 text-sky-400" />
-                <span>Apply in Canvas →</span>
+                <Layers className="h-3.5 w-3.5 text-zinc-400" />
+                <span>Open in Simulator</span>
               </Link>
 
               <button
                 onClick={handleMarkComplete}
                 disabled={isCompleting || completed}
-                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-mono font-bold transition-all ${
+                className={`min-h-[44px] inline-flex items-center gap-2 px-3.5 py-2.5 rounded-md text-xs sm:text-sm font-medium transition ${
                   completed
-                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 cursor-default"
-                    : "bg-sky-500 hover:bg-sky-400 text-slate-950 shadow-md"
+                    ? "bg-emerald-950/60 text-emerald-300 border border-emerald-800/80 cursor-default"
+                    : "bg-blue-600 hover:bg-blue-500 text-white shadow-sm"
                 }`}
               >
                 {isCompleting ? (
@@ -1111,23 +1014,21 @@ export default function LessonDetailPage() {
           </div>
         </div>
 
-        {/* ==================================================================== */}
-        {/* CONCEPTUAL PROGRESSION HEADER */}
-        {/* ==================================================================== */}
-        <div className="mb-8 p-3.5 rounded-xl border border-slate-800/80 bg-slate-950/60 overflow-x-auto shadow-inner">
-          <div className="flex items-center gap-2 text-[11px] font-mono whitespace-nowrap min-w-max">
-            <span className="text-slate-500 uppercase font-bold text-[10px] mr-1 flex items-center gap-1">
-              <Compass className="h-3.5 w-3.5 text-sky-400" />
-              <span>Progression Ladder:</span>
+        {/* Conceptual Progression Header */}
+        <div className="mb-8 p-3 rounded-md border border-zinc-800 bg-zinc-900/40 overflow-x-auto">
+          <div className="flex items-center gap-2 text-xs whitespace-nowrap min-w-max">
+            <span className="text-zinc-400 text-xs mr-1 flex items-center gap-1 font-medium">
+              <Compass className="h-3.5 w-3.5 text-blue-400" />
+              <span>Progression:</span>
             </span>
             {CONCEPTUAL_PROGRESSION.map((step, idx) => (
               <React.Fragment key={step.id}>
-                <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-sky-400 font-medium flex items-center gap-1">
-                  <span className="text-[9px] text-slate-500">{idx + 1}.</span>
+                <span className="px-2.5 py-1 rounded bg-zinc-800 text-zinc-300 text-xs font-medium flex items-center gap-1.5">
+                  <span className="text-xs font-mono text-zinc-500">{idx + 1}.</span>
                   <span>{step.label}</span>
                 </span>
                 {idx < CONCEPTUAL_PROGRESSION.length - 1 && (
-                  <ChevronRight className="h-3 w-3 text-slate-600" />
+                  <ChevronRight className="h-3.5 w-3.5 text-zinc-600" />
                 )}
               </React.Fragment>
             ))}
@@ -1139,36 +1040,34 @@ export default function LessonDetailPage() {
           {lesson.content_markdown.split("---").map((section, idx) => (
             <div
               key={idx}
-              className="rounded-xl border border-slate-800/80 bg-surface-900/40 p-6 shadow-sm"
+              className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6"
             >
               <LessonSectionRenderer sectionText={section.trim()} />
             </div>
           ))}
         </article>
 
-        {/* ==================================================================== */}
-        {/* ARCHITECTURE DECISION MATRIX INTERACTIVE WIDGET */}
-        {/* ==================================================================== */}
+        {/* Architecture Decision Matrix Interactive Widget */}
         {currentDecisionMatrix && (
-          <div className="mt-8 rounded-xl border border-purple-500/30 bg-purple-950/20 p-6 space-y-4">
-            <div className="flex items-center gap-2 text-purple-400 text-xs font-mono font-bold uppercase">
-              <Split className="h-4 w-4" />
-              <span>Architecture Decision Matrix: Real-World Trade-Off Challenge</span>
+          <div className="mt-8 rounded-lg border border-zinc-800 bg-zinc-900/60 p-6 space-y-4">
+            <div className="flex items-center gap-2 text-zinc-200 text-xs sm:text-sm font-semibold uppercase tracking-wide">
+              <Split className="h-4 w-4 text-blue-400" />
+              <span>Architectural Decision: Trade-Off Analysis</span>
             </div>
 
-            <div className="p-3.5 rounded-lg bg-slate-950/70 border border-slate-800 text-xs space-y-1.5">
-              <p className="text-slate-300 leading-relaxed font-sans">
-                <span className="font-bold text-white">Scenario: </span>
+            <div className="p-4 rounded-md bg-zinc-950 border border-zinc-800 text-sm space-y-2">
+              <p className="text-zinc-300 leading-relaxed font-sans">
+                <span className="font-semibold text-zinc-100">Scenario: </span>
                 {currentDecisionMatrix.scenario}
               </p>
-              <p className="text-sky-300 font-mono text-[11px]">
-                <span className="text-slate-400">Target Requirement: </span>
+              <p className="text-zinc-400 text-xs sm:text-sm">
+                <span className="text-zinc-500 font-medium">Constraint: </span>
                 {currentDecisionMatrix.requirement}
               </p>
             </div>
 
             <div className="space-y-2.5">
-              <span className="text-[11px] font-mono text-slate-400 uppercase block">
+              <span className="text-xs sm:text-sm text-zinc-400 font-medium block">
                 Select the most defensible architectural strategy:
               </span>
               {currentDecisionMatrix.options.map((opt) => {
@@ -1177,12 +1076,12 @@ export default function LessonDetailPage() {
                   <button
                     key={opt.id}
                     onClick={() => handleSelectDecisionOption(opt)}
-                    className={`w-full text-left p-3 rounded-lg border text-xs font-mono transition-all flex items-start gap-2.5 ${
+                    className={`w-full text-left p-3.5 rounded-md border text-xs sm:text-sm transition flex items-start gap-3 ${
                       isSelected
                         ? opt.isOptimal
-                          ? "bg-emerald-950/40 border-emerald-500/50 text-emerald-200"
-                          : "bg-amber-950/40 border-amber-500/50 text-amber-200"
-                        : "bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white"
+                          ? "bg-emerald-950/40 border-emerald-600 text-emerald-200"
+                          : "bg-amber-950/40 border-amber-600 text-amber-200"
+                        : "bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-zinc-700 hover:text-white"
                     }`}
                   >
                     <div
@@ -1191,7 +1090,7 @@ export default function LessonDetailPage() {
                           ? opt.isOptimal
                             ? "border-emerald-400 bg-emerald-500/20"
                             : "border-amber-400 bg-amber-500/20"
-                          : "border-slate-600"
+                          : "border-zinc-600"
                       }`}
                     >
                       {isSelected && (
@@ -1202,7 +1101,7 @@ export default function LessonDetailPage() {
                         />
                       )}
                     </div>
-                    <span>{opt.label}</span>
+                    <span className="leading-snug">{opt.label}</span>
                   </button>
                 );
               })}
@@ -1210,17 +1109,17 @@ export default function LessonDetailPage() {
 
             {decisionFeedback && (
               <div
-                className={`p-3.5 rounded-lg border text-xs font-mono space-y-1 animate-in fade-in ${
+                className={`p-4 rounded-md border text-xs sm:text-sm space-y-1.5 animate-in fade-in ${
                   decisionFeedback.isOptimal
-                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
-                    : "bg-amber-500/10 border-amber-500/30 text-amber-300"
+                    ? "bg-emerald-950/30 border-emerald-800/80 text-emerald-300"
+                    : "bg-amber-950/30 border-amber-800/80 text-amber-300"
                 }`}
               >
-                <div className="flex items-center gap-1.5 font-bold">
+                <div className="flex items-center gap-1.5 font-semibold">
                   {decisionFeedback.isOptimal ? (
                     <>
                       <ShieldCheck className="h-4 w-4 text-emerald-400" />
-                      <span>Optimal Senior Staff Decision</span>
+                      <span>Optimal Engineering Decision</span>
                     </>
                   ) : (
                     <>
@@ -1229,50 +1128,54 @@ export default function LessonDetailPage() {
                     </>
                   )}
                 </div>
-                <p className="text-[11px] leading-relaxed">{decisionFeedback.tradeoffExplanation}</p>
+                <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">{decisionFeedback.tradeoffExplanation}</p>
               </div>
             )}
           </div>
         )}
 
         {/* Interactive Mini Exercise Widget */}
-        <div className="mt-8 rounded-xl border border-sky-500/30 bg-sky-950/20 p-6">
+        <div className="mt-8 rounded-lg border border-zinc-800 bg-zinc-900/60 p-6">
           <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2 text-sky-400 text-xs font-mono font-bold uppercase">
-              <Calculator className="h-4 w-4" />
-              <span>Interactive Mini-Exercise: First-Principles Calculation</span>
+            <div className="flex items-center gap-2 text-zinc-200 text-xs sm:text-sm font-semibold uppercase tracking-wide">
+              <Calculator className="h-4 w-4 text-blue-400" />
+              <span>Mini-Exercise: Capacity Calculation</span>
             </div>
             <button
               type="button"
               onClick={() => setShowHint(!showHint)}
-              className="text-[11px] font-mono text-slate-400 hover:text-sky-300 flex items-center gap-1 transition-colors"
+              className="min-h-[44px] px-2.5 py-1.5 text-xs sm:text-sm text-zinc-400 hover:text-zinc-200 inline-flex items-center gap-1 transition-colors rounded hover:bg-zinc-800"
             >
               <HelpCircle className="h-3.5 w-3.5" />
-              <span>{showHint ? "Hide Hint" : "Need a Hint?"}</span>
+              <span>{showHint ? "Hide Hint" : "Hint"}</span>
             </button>
           </div>
 
-          <p className="text-xs text-slate-300 mb-4 leading-relaxed font-mono">
+          <p className="text-sm sm:text-[15px] text-zinc-300 mb-4 leading-relaxed">
             {currentExercise.question}
           </p>
 
           {showHint && (
-            <div className="mb-4 p-3 rounded-lg bg-slate-900 border border-slate-800 text-[11px] font-mono text-sky-300">
-              💡 {currentExercise.hint}
+            <div className="mb-4 p-3.5 rounded-md bg-zinc-950 border border-zinc-800 text-xs sm:text-sm text-zinc-300 leading-relaxed">
+              {currentExercise.hint}
             </div>
           )}
 
-          <form onSubmit={handleCheckExercise} className="flex flex-col sm:flex-row gap-3 max-w-md">
+          <form onSubmit={handleCheckExercise} className="flex flex-col sm:flex-row gap-2.5 max-w-md">
+            <label htmlFor="lesson-mini-exercise-input" className="sr-only">
+              Your calculation answer
+            </label>
             <input
+              id="lesson-mini-exercise-input"
               type="text"
               value={exerciseInput}
               onChange={(e) => setExerciseInput(e.target.value)}
               placeholder={currentExercise.placeholder}
-              className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-mono text-white placeholder-slate-500 focus:border-sky-500 focus:outline-none flex-1"
+              className="min-h-[44px] rounded-md border border-zinc-700 bg-zinc-950 px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-zinc-500 focus:outline-none flex-1"
             />
             <button
               type="submit"
-              className="px-4 py-2 rounded-lg bg-sky-500 hover:bg-sky-400 text-xs font-bold text-slate-950 transition-colors shrink-0"
+              className="min-h-[44px] px-5 py-2.5 rounded-md bg-blue-600 hover:bg-blue-500 text-xs sm:text-sm font-medium text-white transition shrink-0 inline-flex items-center justify-center"
             >
               Verify Calculation
             </button>
@@ -1280,10 +1183,10 @@ export default function LessonDetailPage() {
 
           {exerciseFeedback && (
             <div
-              className={`mt-3 p-3 rounded-lg text-xs font-mono flex items-start gap-2 ${
+              className={`mt-3 p-3.5 rounded-md text-xs sm:text-sm flex items-start gap-2.5 ${
                 exerciseFeedback.isCorrect
-                  ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30"
-                  : "bg-amber-500/10 text-amber-300 border border-amber-500/30"
+                  ? "bg-emerald-950/30 text-emerald-300 border border-emerald-800/80"
+                  : "bg-amber-950/30 text-amber-300 border border-amber-800/80"
               }`}
             >
               {exerciseFeedback.isCorrect ? (
@@ -1291,17 +1194,17 @@ export default function LessonDetailPage() {
               ) : (
                 <X className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
               )}
-              <span>{exerciseFeedback.message}</span>
+              <span className="leading-relaxed">{exerciseFeedback.message}</span>
             </div>
           )}
         </div>
 
         {/* Next / Previous Navigation Footer */}
-        <div className="mt-12 pt-6 border-t border-slate-800 flex items-center justify-between gap-4">
+        <div className="mt-12 pt-6 border-t border-zinc-800 flex items-center justify-between gap-4">
           {lesson.prev_lesson_slug ? (
             <Link
               href={`/learn/${lesson.prev_lesson_slug}`}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-900 text-xs font-mono text-slate-300 hover:text-white hover:border-slate-700 transition-colors"
+              className="min-h-[44px] inline-flex items-center gap-2 px-4 py-2.5 rounded-md border border-zinc-800 bg-zinc-900 text-xs sm:text-sm text-zinc-300 hover:text-white hover:bg-zinc-850 transition"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               <span>Previous Lesson</span>
@@ -1309,17 +1212,17 @@ export default function LessonDetailPage() {
           ) : (
             <Link
               href="/learn"
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-800 bg-slate-900 text-xs font-mono text-slate-300 hover:text-white hover:border-slate-700 transition-colors"
+              className="min-h-[44px] inline-flex items-center gap-2 px-4 py-2.5 rounded-md border border-zinc-800 bg-zinc-900 text-xs sm:text-sm text-zinc-300 hover:text-white hover:bg-zinc-850 transition"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-              <span>Curriculum Dashboard</span>
+              <span>Curriculum</span>
             </Link>
           )}
 
           {lesson.next_lesson_slug ? (
             <Link
               href={`/learn/${lesson.next_lesson_slug}`}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-xs font-bold text-slate-950 transition-colors shadow-md"
+              className="min-h-[44px] inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-blue-600 hover:bg-blue-500 text-xs sm:text-sm font-medium text-white transition shadow-sm"
             >
               <span>Next Lesson</span>
               <ArrowRight className="h-3.5 w-3.5" />
@@ -1327,9 +1230,9 @@ export default function LessonDetailPage() {
           ) : (
             <Link
               href="/simulator"
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-xs font-bold text-slate-950 transition-colors shadow-md"
+              className="min-h-[44px] inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-xs sm:text-sm font-medium text-zinc-200 border border-zinc-700 transition"
             >
-              <span>Apply in Simulator</span>
+              <span>Open in Simulator</span>
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           )}
@@ -1337,6 +1240,6 @@ export default function LessonDetailPage() {
       </main>
 
       <Footer />
-    </>
+    </div>
   );
 }

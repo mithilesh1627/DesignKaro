@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { X, Lock, Mail, User, ShieldCheck, ArrowRight, Loader2 } from "lucide-react";
 import { useAuthStore } from "@/lib/authStore";
 import { API_BASE } from "@/lib/api";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -26,16 +27,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const setAuth = useAuthStore((state) => state.setAuth);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    if (isOpen) {
-      window.addEventListener("keydown", handleKeyDown);
-      return () => window.removeEventListener("keydown", handleKeyDown);
-    }
-  }, [isOpen, onClose]);
+  const dialogRef = useFocusTrap(isOpen, onClose);
 
   if (!isOpen) return null;
 
@@ -89,40 +81,59 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-      <div className="relative w-full max-w-md rounded-xl border border-slate-800 bg-surface-900 p-6 shadow-2xl">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="auth-modal-title"
+      ref={dialogRef}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs"
+    >
+      <div className="relative w-full max-w-md rounded-lg border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
+        <h2 id="auth-modal-title" className="sr-only">
+          {mode === "login" ? "Sign In to DesignKaro" : "Create DesignKaro Account"}
+        </h2>
+
         {/* Close button */}
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 p-1 text-slate-400 hover:text-white rounded-md hover:bg-slate-800 transition-colors"
+          aria-label="Close authentication dialog"
+          className="absolute right-2 top-2 w-11 h-11 flex items-center justify-center text-zinc-400 hover:text-zinc-100 rounded-md hover:bg-zinc-800 transition-colors"
         >
-          <X className="h-5 w-5" />
+          <X className="h-4 w-4" aria-hidden="true" />
         </button>
 
         {/* Tab switchers */}
-        <div className="flex border-b border-slate-800 mb-6">
+        <div role="tablist" aria-label="Authentication mode" className="flex border-b border-zinc-800 mb-6">
           <button
+            role="tab"
+            aria-selected={mode === "login"}
+            id="auth-tab-login"
+            aria-controls="auth-panel"
             onClick={() => {
               setMode("login");
               setErrorMsg(null);
             }}
-            className={`pb-2.5 text-xs font-mono font-bold uppercase transition-colors mr-6 ${
+            className={`min-h-[44px] inline-flex items-center pb-2.5 pt-2 text-xs font-medium uppercase tracking-wider transition-colors mr-6 ${
               mode === "login"
-                ? "text-sky-400 border-b-2 border-sky-400"
-                : "text-slate-400 hover:text-white"
+                ? "text-blue-400 border-b-2 border-blue-500 font-semibold"
+                : "text-zinc-400 hover:text-zinc-200"
             }`}
           >
             Sign In
           </button>
           <button
+            role="tab"
+            aria-selected={mode === "register"}
+            id="auth-tab-register"
+            aria-controls="auth-panel"
             onClick={() => {
               setMode("register");
               setErrorMsg(null);
             }}
-            className={`pb-2.5 text-xs font-mono font-bold uppercase transition-colors ${
+            className={`min-h-[44px] inline-flex items-center pb-2.5 pt-2 text-xs font-medium uppercase tracking-wider transition-colors ${
               mode === "register"
-                ? "text-sky-400 border-b-2 border-sky-400"
-                : "text-slate-400 hover:text-white"
+                ? "text-blue-400 border-b-2 border-blue-500 font-semibold"
+                : "text-zinc-400 hover:text-zinc-200"
             }`}
           >
             Create Account
@@ -131,25 +142,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Error notification */}
         {errorMsg && (
-          <div className="mb-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono leading-relaxed">
+          <div role="alert" aria-live="polite" className="mb-4 p-3 rounded-md bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono leading-relaxed">
             {errorMsg}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form id="auth-panel" role="tabpanel" aria-labelledby={mode === "login" ? "auth-tab-login" : "auth-tab-register"} onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-mono text-slate-300 mb-1">
+            <label htmlFor="auth-email-input" className="block text-xs font-medium text-zinc-300 mb-1">
               Email Address
             </label>
             <div className="relative">
-              <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+              <Mail className="absolute left-3 top-2.5 h-4 w-4 text-zinc-500" aria-hidden="true" />
               <input
+                id="auth-email-input"
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="architect@company.com"
-                className="w-full rounded-lg border border-slate-800 bg-slate-950/80 pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                placeholder="developer@example.com"
+                className="w-full rounded-md border border-zinc-700/80 bg-zinc-950 pl-9 pr-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -157,71 +169,75 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           {mode === "register" && (
             <>
               <div>
-                <label className="block text-xs font-mono text-slate-300 mb-1">
+                <label htmlFor="auth-username-input" className="block text-xs font-medium text-zinc-300 mb-1">
                   Username
                 </label>
                 <div className="relative">
-                  <User className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+                  <User className="absolute left-3 top-2.5 h-4 w-4 text-zinc-500" aria-hidden="true" />
                   <input
+                    id="auth-username-input"
                     type="text"
                     required
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    placeholder="architect_pro"
-                    className="w-full rounded-lg border border-slate-800 bg-slate-950/80 pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    placeholder="dev_architect"
+                    className="w-full rounded-md border border-zinc-700/80 bg-zinc-950 pl-9 pr-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-mono text-slate-300 mb-1">
+                <label htmlFor="auth-fullname-input" className="block text-xs font-medium text-zinc-300 mb-1">
                   Full Name (Optional)
                 </label>
                 <input
+                  id="auth-fullname-input"
                   type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="Ada Lovelace"
-                  className="w-full rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  className="w-full rounded-md border border-zinc-700/80 bg-zinc-950 px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-mono text-slate-300 mb-1">
+                <label htmlFor="auth-experience-select" className="block text-xs font-medium text-zinc-300 mb-1">
                   Experience Tier
                 </label>
                 <select
+                  id="auth-experience-select"
                   value={experienceLevel}
                   onChange={(e) => setExperienceLevel(e.target.value)}
-                  className="w-full rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-xs text-white focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 font-mono"
+                  className="w-full rounded-md border border-zinc-700/80 bg-zinc-950 px-3 py-2 text-xs text-zinc-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
-                  <option value="beginner">Beginner (CS Student / Early Engineer)</option>
+                  <option value="beginner">Beginner (CS Student / Early Career)</option>
                   <option value="intermediate">Intermediate (Backend / Full-Stack)</option>
-                  <option value="advanced">Advanced (Staff / Principal)</option>
+                  <option value="advanced">Advanced (Senior / Staff)</option>
                 </select>
               </div>
             </>
           )}
 
           <div>
-            <label className="block text-xs font-mono text-slate-300 mb-1">
+            <label htmlFor="auth-password-input" className="block text-xs font-medium text-zinc-300 mb-1">
               Password
             </label>
             <div className="relative">
-              <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+              <Lock className="absolute left-3 top-2.5 h-4 w-4 text-zinc-500" aria-hidden="true" />
               <input
+                id="auth-password-input"
                 type="password"
                 required
                 minLength={8}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full rounded-lg border border-slate-800 bg-slate-950/80 pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                className="w-full rounded-md border border-zinc-700/80 bg-zinc-950 pl-9 pr-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
             {mode === "register" && (
-              <p className="mt-1 text-[10px] text-slate-500 font-mono">
-                Minimum 8 characters with bcrypt salt
+              <p className="mt-1 text-[11px] text-zinc-500">
+                Minimum 8 characters
               </p>
             )}
           </div>
@@ -229,13 +245,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full mt-2 inline-flex items-center justify-center gap-2 rounded-lg bg-sky-500 hover:bg-sky-400 py-2.5 text-xs font-bold text-slate-950 transition-all shadow-md disabled:opacity-50"
+            className="w-full mt-2 min-h-[44px] inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 hover:bg-blue-500 py-2.5 text-xs font-medium text-white transition-colors shadow-sm disabled:opacity-50"
           >
             {isLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <>
-                <span>{mode === "login" ? "Authenticate" : "Create Developer Account"}</span>
+                <span>{mode === "login" ? "Sign In" : "Create Account"}</span>
                 <ArrowRight className="h-3.5 w-3.5" />
               </>
             )}
@@ -244,11 +260,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Demo Account Hint */}
         {mode === "login" && (
-          <div className="mt-4 pt-4 border-t border-slate-800/80 text-[11px] font-mono text-slate-400">
-            <span className="text-slate-500">Demo Account:</span>{" "}
-            <span className="text-sky-400 cursor-pointer" onClick={() => { setEmail("demo@designkaro.io"); setPassword("Password123!"); }}>
+          <div className="mt-4 pt-4 border-t border-zinc-800 text-[11px] text-zinc-400">
+            <span className="text-zinc-500">Demo Account:</span>{" "}
+            <button
+              type="button"
+              className="min-h-[36px] inline-flex items-center text-blue-400 hover:text-blue-300 underline font-mono ml-1"
+              onClick={() => { setEmail("demo@designkaro.io"); setPassword("Password123!"); }}
+            >
               demo@designkaro.io / Password123!
-            </span>
+            </button>
           </div>
         )}
       </div>

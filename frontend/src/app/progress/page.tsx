@@ -149,38 +149,35 @@ export default function ProgressPage() {
   };
 
   const getBarColor = (score: number) => {
-    if (score >= 80) return "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]";
-    if (score >= 65) return "bg-sky-500 shadow-[0_0_8px_rgba(14,165,233,0.3)]";
-    if (score >= 50) return "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.3)]";
-    return "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.3)]";
+    if (score >= 80) return "bg-emerald-500";
+    if (score >= 65) return "bg-blue-500";
+    if (score >= 50) return "bg-amber-500";
+    return "bg-rose-500";
   };
 
   return (
-    <>
+    <div className="min-h-screen bg-surface-ground text-zinc-100 flex flex-col">
       <Navigation />
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <main id="main-content" tabIndex={-1} className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 focus:outline-none">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
             <Link
               href="/"
-              className="inline-flex items-center gap-1.5 text-xs font-mono text-slate-400 hover:text-cyan-400 mb-3 transition-colors"
+              className="inline-flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 mb-3 transition-colors"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               <span>Back to Home</span>
             </Link>
-            <div className="flex items-center gap-3.5">
-              <div className="p-3 rounded-2xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 shadow-lg shadow-cyan-500/10">
-                <TrendingUp className="h-6 w-6" />
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300">
+                <TrendingUp className="h-5 w-5" />
               </div>
               <div>
-                <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-cyan-950/80 text-cyan-400 border border-cyan-800/40 text-[10px] font-mono mb-1 uppercase tracking-wider font-semibold">
-                  Progress Dashboard
-                </div>
-                <h1 className="text-2xl sm:text-3xl font-extrabold font-display text-white tracking-tight">
+                <h1 className="text-xl sm:text-2xl font-bold text-zinc-100 tracking-tight">
                   Readiness &amp; Skill Telemetry
                 </h1>
-                <p className="text-xs text-slate-400 font-mono mt-0.5">
-                  Adaptive Mastery Graph • Real-Time Diagnostics • Case Study Knowledge
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Distributed systems mastery graph, rubric scores, and industry case studies
                 </p>
               </div>
             </div>
@@ -189,98 +186,100 @@ export default function ProgressPage() {
           <button
             onClick={fetchDashboardData}
             disabled={loading}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-white/[0.08] bg-slate-900/80 hover:bg-slate-800 text-xs font-mono text-slate-300 transition-all self-start sm:self-auto shadow-sm active:scale-95"
+            className="min-h-[44px] inline-flex items-center gap-2 px-4 py-2.5 rounded-md border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-xs text-zinc-300 transition-colors self-start sm:self-auto"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin text-cyan-400" : ""}`} />
-            <span>Refresh Telemetry</span>
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin text-blue-400" : "text-zinc-400"}`} />
+            <span>Refresh</span>
           </button>
         </div>
 
         {error && (
-          <div className="mb-6 p-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 text-rose-300 text-xs font-mono">
+          <div className="mb-6 p-4 rounded-md border border-rose-500/30 bg-rose-500/10 text-rose-300 text-xs font-mono">
             {error}
           </div>
         )}
 
         {/* Guest Engineer Mode Active Banner */}
         {(!accessToken || !user) && (
-          <div className="mb-8 p-6 rounded-3xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-slate-900/90 to-cyan-500/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 shadow-2xl backdrop-blur-xl">
-            <div className="flex items-start gap-4">
-              <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0 mt-0.5 sm:mt-0 shadow-lg shadow-amber-500/10">
-                <ShieldCheck className="h-5 w-5" />
+          <div className="mb-8 p-5 rounded-lg border border-zinc-800 bg-zinc-900/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="p-2 rounded-md bg-zinc-800 text-zinc-400 border border-zinc-700/60 shrink-0 mt-0.5 sm:mt-0">
+                <ShieldCheck className="h-4 w-4" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-white font-mono flex items-center gap-2">
-                  <span>Guest Engineer Exploration Mode</span>
-                  <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                    Unauthenticated
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-semibold text-zinc-200">
+                    Guest Exploration Mode
+                  </h2>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700 font-mono">
+                    Session Only
                   </span>
-                </h3>
-                <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed font-light">
-                  You are viewing baseline telemetry. Sign in or create a free account to track your real-time practice streak, save architecture canvas diagrams across devices, and unlock verified mastery badges.
+                </div>
+                <p className="text-xs text-zinc-400 mt-1 max-w-2xl leading-relaxed">
+                  You are viewing baseline telemetry. Sign in or create a free account to track your practice streak, persist canvas diagrams across devices, and record interview rubric scores.
                 </p>
               </div>
             </div>
             <button
               onClick={() => setAuthModalOpen(true)}
-              className="px-5 py-3 rounded-xl bg-gradient-to-r from-cyan-500 via-sky-500 to-indigo-500 hover:from-cyan-400 hover:to-indigo-400 text-slate-950 font-mono text-xs font-bold shadow-xl shadow-cyan-500/20 whitespace-nowrap transition-all shrink-0 active:scale-95"
+              className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium whitespace-nowrap transition-colors shrink-0"
             >
-              Sign In / Register Free
+              Sign In / Register
             </button>
           </div>
         )}
 
         {/* Top Telemetry KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <div className="p-6 rounded-3xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-slate-900/80 to-transparent shadow-xl backdrop-blur-xl">
-            <div className="flex items-center justify-between text-xs font-mono text-cyan-400 mb-2 font-semibold">
+          <div className="p-5 rounded-lg border border-zinc-800 bg-zinc-900/60">
+            <div className="flex items-center justify-between text-xs font-medium text-zinc-400 mb-2">
               <span>DESIGN READINESS</span>
-              <Sparkles className="h-4 w-4" />
+              <ShieldCheck className="h-4 w-4 text-zinc-500" />
             </div>
-            <div className="text-4xl font-black font-mono text-white">
+            <div className="text-3xl font-bold font-mono text-zinc-100">
               {dashboard?.readiness_score ?? 0}%
             </div>
-            <div className="text-[11px] text-slate-400 font-mono mt-1.5 truncate">
+            <div className="text-[11px] text-zinc-500 mt-1 truncate">
               Target: {dashboard?.target_role || "Distributed Systems Engineer"}
             </div>
           </div>
 
-          <div className="p-6 rounded-3xl border border-white/[0.08] bg-slate-900/60 shadow-xl backdrop-blur-xl">
-            <div className="flex items-center justify-between text-xs font-mono text-slate-400 mb-2 font-semibold">
+          <div className="p-5 rounded-lg border border-zinc-800 bg-zinc-900/60">
+            <div className="flex items-center justify-between text-xs font-medium text-zinc-400 mb-2">
               <span>PRACTICE STREAK</span>
-              <Zap className="h-4 w-4 text-amber-400 fill-amber-400" />
+              <Zap className="h-4 w-4 text-amber-400" />
             </div>
-            <div className="text-4xl font-black font-mono text-white">
-              {dashboard?.streak_days ?? 0} <span className="text-lg font-normal text-slate-500">Days</span>
+            <div className="text-3xl font-bold font-mono text-zinc-100">
+              {dashboard?.streak_days ?? 0} <span className="text-base font-normal text-zinc-500">Days</span>
             </div>
-            <div className="text-[11px] text-slate-400 font-mono mt-1.5">
-              Total Architectural XP: {dashboard?.total_xp ?? 0}
+            <div className="text-[11px] text-zinc-500 mt-1">
+              Total XP: {dashboard?.total_xp ?? 0}
             </div>
           </div>
 
-          <div className="p-6 rounded-3xl border border-white/[0.08] bg-slate-900/60 shadow-xl backdrop-blur-xl">
-            <div className="flex items-center justify-between text-xs font-mono text-slate-400 mb-2 font-semibold">
-              <span>METRICS COMPLETED</span>
+          <div className="p-5 rounded-lg border border-zinc-800 bg-zinc-900/60">
+            <div className="flex items-center justify-between text-xs font-medium text-zinc-400 mb-2">
+              <span>COMPLETED UNITS</span>
               <CheckCircle2 className="h-4 w-4 text-emerald-400" />
             </div>
-            <div className="text-4xl font-black font-mono text-white">
+            <div className="text-3xl font-bold font-mono text-zinc-100">
               {(dashboard?.completed_lessons_count || 0) + (dashboard?.solved_problems_count || 0)}
             </div>
-            <div className="text-[11px] text-slate-400 font-mono mt-1.5">
-              {dashboard?.completed_lessons_count || 0} Lessons • {dashboard?.solved_problems_count || 0} Labs
+            <div className="text-[11px] text-zinc-500 mt-1">
+              {dashboard?.completed_lessons_count || 0} Lessons • {dashboard?.solved_problems_count || 0} Problems
             </div>
           </div>
 
-          <div className="p-6 rounded-3xl border border-white/[0.08] bg-slate-900/60 shadow-xl backdrop-blur-xl">
-            <div className="flex items-center justify-between text-xs font-mono text-slate-400 mb-2 font-semibold">
-              <span>CURRENT CERTIFICATION</span>
-              <Award className="h-4 w-4 text-cyan-400" />
+          <div className="p-5 rounded-lg border border-zinc-800 bg-zinc-900/60">
+            <div className="flex items-center justify-between text-xs font-medium text-zinc-400 mb-2">
+              <span>CURRENT RANK</span>
+              <Award className="h-4 w-4 text-zinc-500" />
             </div>
-            <div className="text-2xl font-bold font-mono text-cyan-300 truncate mt-1">
+            <div className="text-xl font-bold text-zinc-200 truncate mt-1">
               {dashboard?.current_rank || "Guest Engineer"}
             </div>
-            <div className="text-[11px] text-slate-400 font-mono mt-1.5">
-              {dashboard?.interviews_completed_count || 0} FAANG Mock Interviews
+            <div className="text-[11px] text-zinc-500 mt-1">
+              {dashboard?.interviews_completed_count || 0} Mock Interviews Completed
             </div>
           </div>
         </div>
@@ -288,13 +287,13 @@ export default function ProgressPage() {
         {/* 2-Column: Skill Mastery Graph & Recommendations */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Skill Mastery Graph */}
-          <div className="lg:col-span-2 rounded-3xl border border-white/[0.08] bg-slate-900/60 p-6 sm:p-8 shadow-xl backdrop-blur-xl">
-            <div className="flex items-center justify-between border-b border-white/[0.06] pb-4 mb-6">
-              <div className="flex items-center gap-2 text-xs font-mono text-cyan-400 font-semibold">
-                <ShieldCheck className="h-4 w-4" />
-                <span>GRANULAR SYSTEM DESIGN SKILL MASTERY</span>
+          <div className="lg:col-span-2 rounded-lg border border-zinc-800 bg-zinc-900/60 p-5 sm:p-6">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3.5 mb-5">
+              <div className="flex items-center gap-2 text-xs font-semibold text-zinc-200">
+                <ShieldCheck className="h-4 w-4 text-blue-400" />
+                <span>SYSTEM DESIGN SKILL MASTERY</span>
               </div>
-              <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
                 Continuous Evaluation
               </span>
             </div>
@@ -303,27 +302,27 @@ export default function ProgressPage() {
               {dashboard?.skills && dashboard.skills.length > 0 ? (
                 dashboard.skills.map((skill) => (
                   <div key={skill.id} className="space-y-1.5 group">
-                    <div className="flex justify-between items-center text-xs font-mono">
+                    <div className="flex justify-between items-center text-xs">
                       <div className="flex items-center gap-2">
-                        <span className="text-slate-200 group-hover:text-cyan-300 transition-colors">
+                        <span className="text-zinc-200 group-hover:text-blue-400 transition-colors">
                           {skill.name}
                         </span>
-                        <span className="text-[9px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-white/[0.06]">
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
                           {skill.category}
                         </span>
                       </div>
-                      <span className="text-cyan-400 font-bold">{skill.mastery_score} / 100</span>
+                      <span className="text-zinc-300 font-mono font-medium">{skill.mastery_score} / 100</span>
                     </div>
-                    <div className="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden border border-white/[0.06]">
+                    <div className="w-full bg-zinc-950 h-2 rounded-full overflow-hidden border border-zinc-800">
                       <div
-                        className={`${getBarColor(skill.mastery_score)} h-full rounded-full transition-all duration-700`}
+                        className={`${getBarColor(skill.mastery_score)} h-full rounded-full transition-all duration-500`}
                         style={{ width: `${skill.mastery_score}%` }}
                       />
                     </div>
                   </div>
                 ))
               ) : (
-                <div className="text-xs font-mono text-slate-500 py-6 text-center">
+                <div className="text-xs text-zinc-500 py-6 text-center">
                   Loading skill telemetry...
                 </div>
               )}
@@ -333,32 +332,32 @@ export default function ProgressPage() {
           {/* Recommendations & Achievements */}
           <div className="space-y-6">
             {/* Recommendations */}
-            <div className="rounded-3xl border border-white/[0.08] bg-slate-900/60 p-6 sm:p-7 shadow-xl backdrop-blur-xl">
-              <div className="flex items-center gap-2 text-xs font-mono text-amber-400 font-semibold border-b border-white/[0.06] pb-3 mb-4">
-                <Sparkles className="h-4 w-4" />
-                <span>AI MENTOR RECOMMENDATIONS</span>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-5">
+              <div className="flex items-center gap-2 text-xs font-semibold text-zinc-200 border-b border-zinc-800 pb-3 mb-4">
+                <Sparkles className="h-4 w-4 text-amber-400" />
+                <span>RECOMMENDED NEXT STEPS</span>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {dashboard?.recommendations.map((rec, i) => (
                   <div
                     key={i}
-                    className="p-3.5 rounded-2xl border border-amber-500/20 bg-amber-500/5 text-xs text-slate-300 leading-relaxed flex items-start gap-2.5 font-light"
+                    className="p-3 rounded-md border border-zinc-800 bg-zinc-950/50 text-xs text-zinc-300 leading-relaxed flex items-start gap-2.5"
                   >
-                    <span className="text-amber-400 font-mono font-bold shrink-0">{i + 1}.</span>
+                    <span className="text-zinc-500 font-mono font-bold shrink-0">{i + 1}.</span>
                     <span>{rec}</span>
                   </div>
                 ))}
               </div>
-              <div className="mt-5 pt-3.5 border-t border-white/[0.06] flex gap-2.5">
+              <div className="mt-4 pt-3.5 border-t border-zinc-800 flex gap-2">
                 <Link
                   href="/learn"
-                  className="flex-1 text-center px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-500 hover:from-cyan-400 hover:to-sky-400 text-xs font-bold font-mono text-slate-950 transition-all shadow-md shadow-cyan-500/20 active:scale-95"
+                  className="flex-1 text-center px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-xs font-medium text-white transition-colors"
                 >
-                  Explore Curriculum
+                  Explore Lessons
                 </Link>
                 <Link
                   href="/simulator"
-                  className="flex-1 text-center px-4 py-2.5 rounded-xl border border-white/[0.08] hover:border-white/20 bg-slate-800/80 text-xs font-mono text-slate-200 transition-colors"
+                  className="flex-1 text-center px-3 py-2 rounded-md border border-zinc-700 bg-zinc-800 hover:bg-zinc-750 text-xs font-medium text-zinc-200 transition-colors"
                 >
                   Open Simulator
                 </Link>
@@ -366,32 +365,32 @@ export default function ProgressPage() {
             </div>
 
             {/* Achievements */}
-            <div className="rounded-3xl border border-white/[0.08] bg-slate-900/60 p-6 sm:p-7 shadow-xl backdrop-blur-xl">
-              <div className="flex items-center justify-between border-b border-white/[0.06] pb-3 mb-4">
-                <div className="flex items-center gap-2 text-xs font-mono text-cyan-400 font-semibold">
-                  <Award className="h-4 w-4" />
-                  <span>BADGES &amp; ACHIEVEMENTS</span>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-5">
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-3 mb-4">
+                <div className="flex items-center gap-2 text-xs font-semibold text-zinc-200">
+                  <Award className="h-4 w-4 text-zinc-400" />
+                  <span>ACHIEVEMENTS</span>
                 </div>
-                <span className="text-[10px] font-mono text-slate-400 px-2 py-0.5 rounded-full bg-slate-800 border border-white/[0.06]">
+                <span className="text-[10px] font-mono text-zinc-400 px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700">
                   {dashboard?.achievements.filter((a) => a.is_unlocked).length || 0} /{" "}
                   {dashboard?.achievements.length || 0}
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2.5">
                 {dashboard?.achievements.map((a) => (
                   <div
                     key={a.id}
-                    className={`p-3.5 rounded-2xl border text-center transition-all ${
+                    className={`p-3 rounded-md border text-center transition-colors ${
                       a.is_unlocked
-                        ? "border-cyan-500/30 bg-cyan-500/10 text-white shadow-sm shadow-cyan-500/10"
-                        : "border-white/[0.04] bg-slate-950/40 text-slate-500 opacity-60"
+                        ? "border-zinc-700 bg-zinc-800/80 text-zinc-100"
+                        : "border-zinc-800/60 bg-zinc-950/40 text-zinc-500 opacity-50"
                     }`}
                   >
-                    <div className="text-2xl mb-1 flex justify-center">
-                      {a.is_unlocked ? a.badge_icon : <Lock className="h-5 w-5 text-slate-600" />}
+                    <div className="text-xl mb-1 flex justify-center">
+                      {a.is_unlocked ? a.badge_icon : <Lock className="h-4 w-4 text-zinc-600" />}
                     </div>
-                    <div className="text-[11px] font-semibold truncate">{a.name}</div>
-                    <div className="text-[9px] font-mono text-cyan-400 mt-0.5">+{a.xp_reward} XP</div>
+                    <div className="text-[11px] font-medium truncate">{a.name}</div>
+                    <div className="text-[10px] font-mono text-blue-400 mt-0.5">+{a.xp_reward} XP</div>
                   </div>
                 ))}
               </div>
@@ -400,43 +399,43 @@ export default function ProgressPage() {
         </div>
 
         {/* Recent Architecture Blueprints */}
-        {dashboard?.recent_designs && dashboard.recent_designs.length > 0 && (
-          <div className="rounded-3xl border border-white/[0.08] bg-slate-900/60 p-6 sm:p-8 mb-8 shadow-xl backdrop-blur-xl">
-            <div className="flex items-center justify-between border-b border-white/[0.06] pb-4 mb-5">
-              <div className="flex items-center gap-2 text-xs font-mono text-cyan-400 font-semibold">
-                <Cpu className="h-4 w-4" />
-                <span>SAVED ARCHITECTURAL BLUEPRINTS</span>
-              </div>
-              <Link
-                href="/simulator"
-                className="text-xs font-mono text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5 transition-colors"
-              >
-                <span>Launch Simulator</span>
-                <ExternalLink className="h-3 w-3" />
-              </Link>
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-5 sm:p-6 mb-8">
+          <div className="flex items-center justify-between border-b border-zinc-800 pb-3.5 mb-5">
+            <div className="flex items-center gap-2 text-xs font-semibold text-zinc-200">
+              <Cpu className="h-4 w-4 text-zinc-400" />
+              <span>SAVED ARCHITECTURAL BLUEPRINTS</span>
             </div>
+            <Link
+              href="/simulator"
+              className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1.5 transition-colors font-medium"
+            >
+              <span>Launch Simulator</span>
+              <ExternalLink className="h-3 w-3" />
+            </Link>
+          </div>
+          {dashboard?.recent_designs && dashboard.recent_designs.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {dashboard.recent_designs.map((design) => (
                 <div
                   key={design.id}
-                  className="p-5 rounded-2xl border border-white/[0.06] bg-slate-950/60 hover:border-cyan-500/40 transition-all shadow-md flex flex-col justify-between"
+                  className="p-4 rounded-md border border-zinc-800 bg-zinc-950/60 hover:border-zinc-700 transition-colors flex flex-col justify-between"
                 >
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-bold text-white truncate">{design.title}</span>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-white/[0.06]">
+                      <span className="text-xs font-semibold text-zinc-200 truncate">{design.title}</span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
                         v{design.latest_version}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-400 line-clamp-2 mb-4 font-light">
+                    <p className="text-[11px] text-zinc-400 line-clamp-2 mb-4 leading-relaxed">
                       {design.description || "Interactive architecture canvas layout."}
                     </p>
                   </div>
-                  <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 pt-3 border-t border-white/[0.04]">
+                  <div className="flex items-center justify-between text-[10px] font-mono text-zinc-500 pt-2.5 border-t border-zinc-800/80">
                     <span>{new Date(design.updated_at).toLocaleDateString()}</span>
                     <Link
                       href={`/simulator?id=${design.public_id || design.id}`}
-                      className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-semibold"
+                      className="text-blue-400 hover:text-blue-300 flex items-center gap-1 font-medium font-sans"
                     >
                       <span>Open Simulator</span>
                       <ExternalLink className="h-2.5 w-2.5" />
@@ -445,19 +444,36 @@ export default function ProgressPage() {
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Industry Architecture Case Studies & RAG Knowledge */}
-        <div className="rounded-3xl border border-white/[0.08] bg-slate-900/60 p-6 sm:p-8 shadow-xl backdrop-blur-xl">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/[0.06] pb-5 mb-6">
-            <div>
-              <div className="flex items-center gap-2 text-xs font-mono text-cyan-400 font-semibold">
-                <BookOpen className="h-4 w-4" />
-                <span>PRODUCTION CASE STUDIES &amp; RAG ARCHITECTURE</span>
+          ) : (
+            <div className="p-8 rounded-md border border-zinc-800/60 bg-zinc-950/40 text-center space-y-3">
+              <div className="w-9 h-9 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 flex items-center justify-center mx-auto">
+                <Cpu className="w-4 h-4" />
               </div>
-              <p className="text-xs text-slate-400 font-mono mt-1 font-light">
-                Verified post-mortems and architectures from Netflix, Discord, Uber, Stripe &amp; TikTok
+              <h3 className="text-xs font-semibold text-zinc-300">No Saved Architecture Blueprints Yet</h3>
+              <p className="text-[11px] text-zinc-400 max-w-sm mx-auto leading-relaxed">
+                Design custom distributed systems or practice system design interview problems in the Simulator.
+              </p>
+              <Link
+                href="/simulator"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors"
+              >
+                <span>Create Your First Blueprint</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          )}
+        </div>
+
+        {/* Industry Architecture Case Studies & Knowledge Base */}
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-5 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-800 pb-4 mb-5">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-semibold text-zinc-200">
+                <BookOpen className="h-4 w-4 text-zinc-400" />
+                <span>PRODUCTION CASE STUDIES &amp; ARCHITECTURAL PATTERNS</span>
+              </div>
+              <p className="text-xs text-zinc-400 mt-1">
+                Post-mortems and architectures from Netflix, Discord, Uber, Stripe &amp; TikTok
               </p>
             </div>
 
@@ -471,10 +487,10 @@ export default function ProgressPage() {
                       setKnowledgeCategory(cat);
                       searchKnowledge(searchQuery, cat);
                     }}
-                    className={`text-[10px] font-mono px-3 py-1.5 rounded-xl border transition-all ${
+                    className={`text-[11px] px-2.5 py-1 rounded-md border transition-colors ${
                       knowledgeCategory === cat
-                        ? "bg-cyan-500/20 border-cyan-500/40 text-cyan-300 font-bold shadow-sm shadow-cyan-500/10"
-                        : "border-white/[0.06] bg-slate-900/60 text-slate-400 hover:text-slate-200"
+                        ? "bg-zinc-800 border-zinc-700 text-zinc-100 font-medium"
+                        : "border-zinc-850 bg-zinc-950/60 text-zinc-400 hover:text-zinc-200 hover:border-zinc-800"
                     }`}
                   >
                     {cat}
@@ -487,19 +503,23 @@ export default function ProgressPage() {
           {/* Search Bar */}
           <form onSubmit={handleSearchSubmit} className="flex gap-2.5 mb-6">
             <div className="relative flex-1">
-              <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-500" />
+              <label htmlFor="knowledge-search-input" className="sr-only">
+                Search architecture case studies
+              </label>
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-500" aria-hidden="true" />
               <input
+                id="knowledge-search-input"
                 type="text"
                 placeholder="Search architecture case studies (e.g. ScyllaDB, H3, Idempotency, Vector Search, HLS)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-white/[0.08] bg-slate-950 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition-colors"
+                className="w-full pl-9 pr-4 py-2 rounded-md border border-zinc-800 bg-zinc-950 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 transition-colors"
               />
             </div>
             <button
               type="submit"
               disabled={searchingKnowledge}
-              className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-sky-500 hover:from-cyan-400 hover:to-sky-400 text-xs font-bold font-mono text-slate-950 transition-all shadow-md shadow-cyan-500/20 shrink-0 active:scale-95"
+              className="px-4 py-2 rounded-md bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-200 border border-zinc-700 transition-colors shrink-0"
             >
               {searchingKnowledge ? "Searching..." : "Search"}
             </button>
@@ -510,46 +530,46 @@ export default function ProgressPage() {
             {knowledgeResults.map((item) => (
               <div
                 key={item.id}
-                className="p-6 rounded-2xl border border-white/[0.06] bg-slate-950/60 hover:border-cyan-500/30 transition-all flex flex-col justify-between shadow-lg"
+                className="p-5 rounded-md border border-zinc-800 bg-zinc-950/50 hover:border-zinc-700 transition-colors flex flex-col justify-between"
               >
                 <div>
-                  <div className="flex items-center justify-between gap-2 mb-2.5">
-                    <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-semibold">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
                       {item.company} • {item.category}
                     </span>
                     <a
                       href={item.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-slate-500 hover:text-cyan-400 transition-colors"
+                      className="text-zinc-500 hover:text-zinc-300 transition-colors"
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
                     </a>
                   </div>
-                  <h3 className="text-sm font-bold text-white mb-2 leading-snug">{item.title}</h3>
-                  <p className="text-xs text-slate-400 leading-relaxed mb-4 font-light">{item.summary}</p>
+                  <h3 className="text-sm font-semibold text-zinc-100 mb-1.5 leading-snug">{item.title}</h3>
+                  <p className="text-xs text-zinc-400 leading-relaxed mb-3.5">{item.summary}</p>
 
-                  <div className="space-y-1.5 mb-4">
-                    <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-semibold">
-                      Key Architectural Principles:
+                  <div className="space-y-1.5 mb-3.5">
+                    <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-medium">
+                      Key Takeaways:
                     </div>
                     {item.key_takeaways.map((takeaway, idx) => (
                       <div
                         key={idx}
-                        className="text-[11px] text-slate-300 flex items-start gap-1.5 leading-tight font-light"
+                        className="text-[11px] text-zinc-300 flex items-start gap-1.5 leading-tight"
                       >
-                        <span className="text-cyan-400 font-bold">•</span>
+                        <span className="text-blue-400 font-bold">•</span>
                         <span>{takeaway}</span>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-1.5 pt-3.5 border-t border-white/[0.04]">
+                <div className="flex flex-wrap gap-1.5 pt-3 border-t border-zinc-800/80">
                   {item.tags.map((tag) => (
                     <span
                       key={tag}
-                      className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-slate-900 text-slate-400 border border-white/[0.06]"
+                      className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-900 text-zinc-500 border border-zinc-800"
                     >
                       #{tag}
                     </span>
@@ -562,7 +582,7 @@ export default function ProgressPage() {
       </main>
       <Footer />
       <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
-    </>
+    </div>
   );
 }
 

@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { API_BASE } from "@/lib/api";
 import { useAuthStore } from "@/lib/authStore";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 import { LlmSettingsModal } from "./LlmSettingsModal";
 import { MentorResponseCard } from "./MentorResponseCard";
 import { MentorResponse } from "@/types/mentor";
@@ -47,6 +48,8 @@ export const AiMentorDrawer: React.FC<AiMentorDrawerProps> = ({
   graphData,
 }) => {
   const { accessToken, isAuthenticated } = useAuthStore();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const drawerRef = useFocusTrap(isOpen && !settingsOpen, onClose);
 
   const [skillLevel, setSkillLevel] = useState<"beginner" | "intermediate" | "advanced">("intermediate");
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -81,7 +84,6 @@ export const AiMentorDrawer: React.FC<AiMentorDrawerProps> = ({
   const [hintLoading, setHintLoading] = useState(false);
   const [activeProviderName, setActiveProviderName] = useState<string>("ollama");
   const [activeModel, setActiveModel] = useState<string>("llama3.2:3b");
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Fetch active provider info
   const fetchProviderInfo = async () => {
@@ -307,22 +309,29 @@ export const AiMentorDrawer: React.FC<AiMentorDrawerProps> = ({
 
   return (
     <>
-      <div className="fixed inset-y-0 right-0 z-50 w-full max-w-lg bg-surface-950/95 backdrop-blur-xl border-l border-slate-800 shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
+      <div
+        ref={drawerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mentor-drawer-title"
+        className="fixed inset-y-0 right-0 z-50 w-full max-w-lg bg-surface-overlay/95 backdrop-blur-xl border-l border-surface-border shadow-2xl flex flex-col animate-in slide-in-from-right duration-300"
+      >
         {/* Header */}
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-surface-900/60">
+        <div className="p-4 border-b border-surface-border flex items-center justify-between bg-surface-base/80">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 flex items-center justify-center">
               <Brain className="h-4 w-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-white font-display">
+                <h2 id="mentor-drawer-title" className="text-sm font-bold text-white font-display">
                   Senior Staff Architect
-                </h3>
+                </h2>
                 {/* Active Provider Badge */}
                 <button
                   onClick={() => setSettingsOpen(true)}
                   title="Click to configure LLM provider"
+                  aria-label="Click to configure LLM provider"
                   className="flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-950/80 text-cyan-300 border border-cyan-800/80 hover:border-cyan-500 hover:text-white transition"
                 >
                   <Cpu className="w-2.5 h-2.5 text-cyan-400" />
@@ -338,13 +347,15 @@ export const AiMentorDrawer: React.FC<AiMentorDrawerProps> = ({
             <button
               onClick={() => setSettingsOpen(true)}
               title="LLM Settings"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              aria-label="Open LLM settings"
+              className="w-11 h-11 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
             >
               <Settings className="h-4 w-4" />
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              aria-label="Close senior staff architect drawer"
+              className="w-11 h-11 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
             >
               <X className="h-4 w-4" />
             </button>
@@ -388,10 +399,10 @@ export const AiMentorDrawer: React.FC<AiMentorDrawerProps> = ({
                 key={hint.level}
                 onClick={() => handleFetchHint(hint.level)}
                 disabled={hintLoading}
-                className={`py-1.5 px-2 rounded-lg text-[11px] font-mono font-medium border transition-all ${
+                className={`min-h-[44px] py-2 px-2.5 rounded-lg text-[11px] font-mono font-medium border transition-all flex items-center justify-center ${
                   activeHintLevel === hint.level
                     ? "bg-amber-500/20 border-amber-500/40 text-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.15)]"
-                    : "bg-surface-900/60 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700"
+                    : "bg-surface-base/60 border-surface-border text-slate-400 hover:text-white hover:border-slate-700"
                 }`}
               >
                 {hintLoading && activeHintLevel === hint.level ? (
@@ -426,8 +437,8 @@ export const AiMentorDrawer: React.FC<AiMentorDrawerProps> = ({
               <div
                 className={`max-w-[88%] rounded-xl p-3.5 space-y-2 ${
                   m.role === "user"
-                    ? "bg-cyan-600 text-slate-950 font-medium shadow-md"
-                    : "bg-surface-900 border border-slate-800 text-slate-200"
+                    ? "bg-cyan-700 text-white font-medium shadow-md"
+                    : "bg-surface-elevated border border-surface-border text-slate-200"
                 }`}
               >
                 {m.role === "assistant" && m.structured ? (
@@ -475,19 +486,24 @@ export const AiMentorDrawer: React.FC<AiMentorDrawerProps> = ({
             e.preventDefault();
             handleSendMessage();
           }}
-          className="p-3 border-t border-slate-800 bg-surface-900/80 flex items-center gap-2"
+          className="p-3 border-t border-surface-border bg-surface-base/80 flex items-center gap-2"
         >
+          <label htmlFor="mentor-chat-input" className="sr-only">
+            Ask Senior Staff Architect
+          </label>
           <input
+            id="mentor-chat-input"
             type="text"
             value={inputMsg}
             onChange={(e) => setInputMsg(e.target.value)}
             placeholder="Ask about SPOFs, Little's Law, caching, partition keys..."
-            className="flex-1 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-mono text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+            className="flex-1 rounded-lg border border-surface-border bg-surface-ground px-3 py-2 text-xs font-mono text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
           />
           <button
             type="submit"
+            aria-label="Send message"
             disabled={loading || !inputMsg.trim()}
-            className="p-2 rounded-lg bg-gradient-to-r from-cyan-500 to-sky-500 hover:from-cyan-400 hover:to-sky-400 disabled:opacity-50 text-slate-950 font-bold transition-colors shrink-0"
+            className="w-11 h-11 flex items-center justify-center rounded-lg bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-sky-950 font-bold transition-colors shrink-0"
           >
             <Send className="h-3.5 w-3.5" />
           </button>

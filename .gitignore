@@ -36,3 +36,10 @@ frontend/.next/
 # Scratch scripts
 scratch/
 
+# Root loose images and screenshots
+/*.png
+/*.jpg
+/*.jpeg
+
+# Local tool caches & configs
+.impeccable/

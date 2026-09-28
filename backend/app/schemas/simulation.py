@@ -2,14 +2,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class TrafficProfile(BaseModel):
-    base_qps: int = Field(default=5000, ge=100)
-    peak_qps: int = Field(default=25000, ge=100)
-    duration_sec: int = Field(default=30, ge=5, le=120)
+    base_qps: int = Field(default=5000, ge=0)
+    peak_qps: int = Field(default=25000, ge=0)
+    duration_sec: int = Field(default=30, ge=1, le=120)
     step_sec: int = Field(default=2, ge=1, le=10)
     # Phase 5 Controls
-    concurrent_users: int = Field(default=50000, ge=1)
+    concurrent_users: int = Field(default=50000, ge=0)
     read_ratio: float = Field(default=0.8, ge=0.0, le=1.0)
-    payload_kb: float = Field(default=10.0, ge=0.1)
+    payload_kb: float = Field(default=10.0, ge=0.01)
     cache_hit_ratio: float = Field(default=0.85, ge=0.0, le=1.0)
     network_latency_ms: float = Field(default=15.0, ge=0.0)
 

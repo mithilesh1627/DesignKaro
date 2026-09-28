@@ -229,8 +229,8 @@ export const MentorResponseCard: React.FC<MentorResponseCardProps> = ({
 
       {/* Socratic Next Question (Think About This) */}
       {response.next_question && (
-        <div className="rounded-lg p-3 bg-gradient-to-br from-cyan-950/40 via-slate-900 to-slate-950 border border-cyan-500/30 text-cyan-100 shadow-sm space-y-2 mt-2">
-          <div className="flex items-center gap-1.5 text-cyan-400 text-[11px] font-mono font-bold uppercase tracking-wider">
+        <div className="rounded-lg p-3 bg-zinc-900/90 border border-sky-500/30 text-sky-100 shadow-sm space-y-2 mt-2">
+          <div className="flex items-center gap-1.5 text-sky-400 text-xs font-mono font-bold uppercase tracking-wider">
             <Brain className="w-3.5 h-3.5" />
             <span>Think About This:</span>
           </div>

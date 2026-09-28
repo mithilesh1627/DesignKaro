@@ -74,6 +74,7 @@ async def register(
         full_name=user_in.full_name,
         experience_level=user_in.experience_level or "beginner",
         current_rank="Associate Architect",
+        target_role="Staff Systems Architect",
         target_qps=10000,
     )
     db.add(new_profile)

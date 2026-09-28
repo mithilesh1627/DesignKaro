@@ -28,6 +28,7 @@ class UserProfileResponse(BaseModel):
     bio: str | None = None
     experience_level: str
     current_rank: str
+    target_role: str = "Staff Systems Architect"
     target_qps: int
 
 

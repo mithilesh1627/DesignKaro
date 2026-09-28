@@ -8,6 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field
 class NodePropertySchema(BaseModel):
     replicas: int = Field(default=1, ge=1)
     qps_capacity: int = Field(default=10000, ge=0)
+    read_capacity: int | None = Field(default=None, ge=0)
+    write_capacity: int | None = Field(default=None, ge=0)
     memory_gb: float = Field(default=8.0, ge=0.0)
     storage_gb: float = Field(default=100.0, ge=0.0)
     latency_ms: float = Field(default=1.0, ge=0.0)

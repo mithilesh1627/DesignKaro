@@ -56,9 +56,10 @@ async def get_developer_dashboard(
         streak = 1
         # Load user profile data
         if current_user.profile:
-            user_rank = current_user.profile.current_rank or "Senior Systems Engineer"
-            user_target = current_user.profile.target_role or "Staff Systems Architect"
-            xp = current_user.profile.target_qps // 50
+            user_rank = getattr(current_user.profile, "current_rank", None) or "Senior Systems Engineer"
+            user_target = getattr(current_user.profile, "target_role", None) or "Staff Systems Architect"
+            target_qps = getattr(current_user.profile, "target_qps", 10000) or 10000
+            xp = max(0, target_qps // 50)
             streak = 12
 
 

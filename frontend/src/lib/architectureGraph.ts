@@ -12,6 +12,7 @@ import {
   AIArchitectCritiqueResponse,
   AIArchitectSuggestion,
 } from "@/types/simulator";
+import { API_BASE } from "./api";
 
 // ============================================================================
 // DETERMINISTIC GRAPH VALIDATION & FIRST-PRINCIPLES RULE ENGINE (0ms LATENCY)
@@ -752,6 +753,8 @@ export function mapToBackendGraph(graph: ArchitectureGraph, scaleMetadata?: Reco
       properties: {
         replicas: n.config.replicas || 1,
         qps_capacity: n.config.qps_capacity || 10000,
+        read_capacity: n.config.read_capacity,
+        write_capacity: n.config.write_capacity,
         memory_gb: n.config.memory_gb || 8.0,
         storage_gb: n.config.storage_gb || 100.0,
         latency_ms: n.config.latency_ms || 1.0,
@@ -790,7 +793,8 @@ export async function validateGraphOnBackend(
   scaleMetadata?: Record<string, any>
 ): Promise<ValidationResponse> {
   const payload = mapToBackendGraph(graph, scaleMetadata);
-  const response = await fetch("http://127.0.0.1:8000/api/v1/designs/validate", {
+  const baseUrl = API_BASE || "http://127.0.0.1:8000";
+  const response = await fetch(`${baseUrl}/api/v1/designs/validate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -809,7 +813,8 @@ export async function fetchAIArchitectCritique(
 ): Promise<AIArchitectCritiqueResponse> {
   const payload = mapToBackendGraph(graph, scaleMetadata);
   try {
-    const response = await fetch("http://127.0.0.1:8000/api/v1/designs/critique", {
+    const baseUrl = API_BASE || "http://127.0.0.1:8000";
+    const response = await fetch(`${baseUrl}/api/v1/designs/critique`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -897,7 +902,7 @@ export function getEdgeVisualProps(connectionType: ConnectionType) {
         animated: true,
         label: "Async Event",
         labelStyle: { fill: "#c084fc", fontSize: 10, fontFamily: "monospace", fontWeight: 700 },
-        labelBgStyle: { fill: "#091122", fillOpacity: 0.9, stroke: "#a855f7", strokeWidth: 1 },
+        labelBgStyle: { fill: "#18181b", fillOpacity: 0.95, stroke: "#a855f7", strokeWidth: 1 },
       };
     case "replication":
       return {
@@ -907,7 +912,7 @@ export function getEdgeVisualProps(connectionType: ConnectionType) {
         animated: true,
         label: "Replication",
         labelStyle: { fill: "#34d399", fontSize: 10, fontFamily: "monospace", fontWeight: 700 },
-        labelBgStyle: { fill: "#091122", fillOpacity: 0.9, stroke: "#10b981", strokeWidth: 1 },
+        labelBgStyle: { fill: "#18181b", fillOpacity: 0.95, stroke: "#10b981", strokeWidth: 1 },
       };
     case "read_path":
       return {
@@ -916,7 +921,7 @@ export function getEdgeVisualProps(connectionType: ConnectionType) {
         animated: false,
         label: "Read Path",
         labelStyle: { fill: "#38bdf8", fontSize: 10, fontFamily: "monospace", fontWeight: 700 },
-        labelBgStyle: { fill: "#091122", fillOpacity: 0.9, stroke: "#38bdf8", strokeWidth: 1 },
+        labelBgStyle: { fill: "#18181b", fillOpacity: 0.95, stroke: "#38bdf8", strokeWidth: 1 },
       };
     case "write_path":
       return {
@@ -925,7 +930,7 @@ export function getEdgeVisualProps(connectionType: ConnectionType) {
         animated: true,
         label: "Write Path",
         labelStyle: { fill: "#fbbf24", fontSize: 10, fontFamily: "monospace", fontWeight: 700 },
-        labelBgStyle: { fill: "#091122", fillOpacity: 0.9, stroke: "#f59e0b", strokeWidth: 1 },
+        labelBgStyle: { fill: "#18181b", fillOpacity: 0.95, stroke: "#f59e0b", strokeWidth: 1 },
       };
     case "sync":
     default:
@@ -935,7 +940,7 @@ export function getEdgeVisualProps(connectionType: ConnectionType) {
         animated: true,
         label: "Sync RPC",
         labelStyle: { fill: "#22d3ee", fontSize: 10, fontFamily: "monospace", fontWeight: 600 },
-        labelBgStyle: { fill: "#091122", fillOpacity: 0.9, stroke: "#06b6d4", strokeWidth: 1 },
+        labelBgStyle: { fill: "#18181b", fillOpacity: 0.95, stroke: "#06b6d4", strokeWidth: 1 },
       };
   }
 }
