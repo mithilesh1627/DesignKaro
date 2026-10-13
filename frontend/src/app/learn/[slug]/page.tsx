@@ -25,12 +25,14 @@ import {
   Lock,
   LogIn,
   ShieldAlert,
+  Play,
 } from "lucide-react";
 import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
 import { AuthModal } from "@/components/AuthModal";
 import { useAuthStore } from "@/lib/authStore";
 import { API_BASE } from "@/lib/api";
+import { getExerciseForSlug } from "@/lib/guidedExercises";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -868,6 +870,7 @@ export default function LessonDetailPage() {
   };
 
   const currentDecisionMatrix = LESSON_DECISION_MATRICES[slug] || LESSON_DECISION_MATRICES["latency-vs-throughput"];
+  const guidedExercise = getExerciseForSlug(lesson?.slug || (typeof slug === "string" ? slug : ""));
 
   const handleMarkComplete = async () => {
     if (!lesson) return;
@@ -986,8 +989,18 @@ export default function LessonDetailPage() {
 
             {/* Action CTAs */}
             <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+              {guidedExercise && (
+                <Link
+                  href={`/simulator?topic=${encodeURIComponent(lesson.slug)}&mode=guided`}
+                  className="min-h-[44px] inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-medium shadow-sm transition"
+                >
+                  <Play className="h-3.5 w-3.5 fill-current" />
+                  <span>Start Guided Lab</span>
+                </Link>
+              )}
+
               <Link
-                href={`/simulator?topic=${encodeURIComponent(lesson.topic_slug)}`}
+                href={`/simulator?topic=${encodeURIComponent(lesson.slug)}`}
                 className="min-h-[44px] inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-md bg-zinc-800 hover:bg-zinc-750 border border-zinc-700 text-zinc-200 text-xs sm:text-sm font-medium transition"
               >
                 <Layers className="h-3.5 w-3.5 text-zinc-400" />
@@ -1199,6 +1212,31 @@ export default function LessonDetailPage() {
           )}
         </div>
 
+        {/* Guided Architecture Lab Callout if applicable */}
+        {guidedExercise && (
+          <div className="mt-8 p-5 rounded-lg border border-emerald-900/40 bg-gradient-to-r from-emerald-950/25 via-zinc-900/70 to-zinc-900/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+            <div className="space-y-1.5">
+              <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-400">
+                <Play className="h-3.5 w-3.5 fill-current" />
+                <span>Interactive Guided Lab Available</span>
+              </div>
+              <h3 className="text-base font-medium text-zinc-100">
+                {guidedExercise.title}
+              </h3>
+              <p className="text-xs text-zinc-400 max-w-xl leading-relaxed">
+                {guidedExercise.subtitle}
+              </p>
+            </div>
+            <Link
+              href={`/simulator?topic=${encodeURIComponent(lesson.slug)}&mode=guided`}
+              className="min-h-[44px] inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-xs sm:text-sm font-medium text-white transition shadow-sm shrink-0"
+            >
+              <Play className="h-3.5 w-3.5 fill-current" />
+              <span>Launch Guided Lab ({guidedExercise.tasks.length} Objectives)</span>
+            </Link>
+          </div>
+        )}
+
         {/* Next / Previous Navigation Footer */}
         <div className="mt-12 pt-6 border-t border-zinc-800 flex items-center justify-between gap-4">
           {lesson.prev_lesson_slug ? (
@@ -1229,7 +1267,7 @@ export default function LessonDetailPage() {
             </Link>
           ) : (
             <Link
-              href="/simulator"
+              href={`/simulator?topic=${encodeURIComponent(lesson.slug)}`}
               className="min-h-[44px] inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-xs sm:text-sm font-medium text-zinc-200 border border-zinc-700 transition"
             >
               <span>Open in Simulator</span>

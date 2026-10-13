@@ -37,6 +37,7 @@ import {
   User,
   LogIn,
   RefreshCw,
+  BookOpen,
 } from "lucide-react";
 import {
   ArchitectureEdge,
@@ -92,6 +93,7 @@ import {
   INITIAL_YOUTUBE_GRAPH,
   STARTER_TEMPLATES,
   SimulatorTab,
+  getStarterGraphForTopic,
 } from "@/components/simulator/simulatorConstants";
 import {
   CustomFlowData,
@@ -107,6 +109,8 @@ import { SimulatorRuleEngineDrawer } from "@/components/simulator/SimulatorRuleE
 import { SimulatorAdvisorDrawer } from "@/components/simulator/SimulatorAdvisorDrawer";
 import { SimulatorInterviewModal } from "@/components/simulator/SimulatorInterviewModal";
 import { SimulatorClearCanvasModal } from "@/components/simulator/SimulatorClearCanvasModal";
+import { SimulatorGuidedExercisePanel } from "@/components/simulator/SimulatorGuidedExercisePanel";
+import { getExerciseForSlug } from "@/lib/guidedExercises";
 
 // ============================================================================
 // MAIN SIMULATOR WORKSPACE COMPONENT
@@ -116,17 +120,147 @@ function SimulatorContent() {
   const { user } = useAuthStore();
   const searchParams = useSearchParams();
   const problemSlug = searchParams?.get("problem");
+  const topicSlug = searchParams?.get("topic");
+  const exerciseSlug = searchParams?.get("exercise");
+  const modeParam = searchParams?.get("mode");
   const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
   const reactFlowInstance = useReactFlow();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
+  const activeExercise = useMemo(() => {
+    return getExerciseForSlug(exerciseSlug || topicSlug);
+  }, [exerciseSlug, topicSlug]);
+
   // --------------------------------------------------------------------------
   // ARCHITECTURE GRAPH STATE (SINGLE SOURCE OF TRUTH)
   // --------------------------------------------------------------------------
-  const [graphState, setGraphState] = useState<ArchitectureGraph>(INITIAL_YOUTUBE_GRAPH);
+  const [graphState, setGraphState] = useState<ArchitectureGraph>(() => {
+    if (modeParam === "guided" && activeExercise) {
+      return activeExercise.initialGraph;
+    }
+    if (topicSlug) {
+      const topicGraph = getStarterGraphForTopic(topicSlug);
+      if (topicGraph) return topicGraph;
+      const formattedTitle = topicSlug
+        .split("-")
+        .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+        .join(" ");
+      return {
+        ...STARTER_TEMPLATES.three_tier,
+        metadata: {
+          ...STARTER_TEMPLATES.three_tier.metadata,
+          problemId: topicSlug,
+          title: `${formattedTitle} Lab`,
+          targetRps: "25K RPS",
+          version: 1,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    }
+    return INITIAL_YOUTUBE_GRAPH;
+  });
 
-  // Handle URL Problem Param (e.g., /simulator?problem=rate-limiter)
+  // Ref to prevent resetting user's live canvas when dependencies update or reactFlowInstance re-renders
+  const loadedScenarioKeyRef = useRef<string | null>(null);
+
+  // Handle URL Query Params (problem, topic, or guided exercise)
   useEffect(() => {
+    const currentScenarioKey = `${modeParam || ""}:${topicSlug || ""}:${exerciseSlug || ""}:${problemSlug || ""}`;
+    if (loadedScenarioKeyRef.current === currentScenarioKey) {
+      return;
+    }
+    loadedScenarioKeyRef.current = currentScenarioKey;
+
+    if (modeParam === "guided" && activeExercise) {
+      const loaded: ArchitectureGraph = {
+        ...activeExercise.initialGraph,
+        metadata: {
+          ...activeExercise.initialGraph.metadata,
+          version: 1,
+          updatedAt: new Date().toISOString(),
+        },
+      };
+      setGraphState(loaded);
+      setHistory([loaded]);
+      setHistoryIndex(0);
+      setEvents([
+        createArchitectureEvent(
+          "LOAD_TEMPLATE",
+          1,
+          `Loaded guided exercise: ${activeExercise.title}`
+        ),
+      ]);
+      setActiveTab("guide");
+      if (reactFlowInstance) {
+        setTimeout(() => {
+          reactFlowInstance.fitView({ padding: 0.25, duration: 400 });
+        }, 100);
+      }
+      return;
+    }
+
+    if (topicSlug) {
+      const topicGraph = getStarterGraphForTopic(topicSlug);
+      if (topicGraph) {
+        const loaded: ArchitectureGraph = {
+          ...topicGraph,
+          metadata: {
+            ...topicGraph.metadata,
+            version: 1,
+            updatedAt: new Date().toISOString(),
+          },
+        };
+        setGraphState(loaded);
+        setHistory([loaded]);
+        setHistoryIndex(0);
+        setEvents([
+          createArchitectureEvent(
+            "LOAD_TEMPLATE",
+            1,
+            `Loaded ${topicGraph.metadata.title} for curriculum topic`
+          ),
+        ]);
+        if (reactFlowInstance) {
+          setTimeout(() => {
+            reactFlowInstance.fitView({ padding: 0.25, duration: 400 });
+          }, 100);
+        }
+      } else {
+        const formattedTitle = topicSlug
+          .split("-")
+          .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+          .join(" ");
+        const baseline: ArchitectureGraph = {
+          ...STARTER_TEMPLATES.three_tier,
+          metadata: {
+            ...STARTER_TEMPLATES.three_tier.metadata,
+            problemId: topicSlug,
+            title: `${formattedTitle} Lab`,
+            targetRps: "25K RPS",
+            version: 1,
+            updatedAt: new Date().toISOString(),
+          },
+        };
+        setGraphState(baseline);
+        setHistory([baseline]);
+        setHistoryIndex(0);
+        setEvents([
+          createArchitectureEvent(
+            "LOAD_TEMPLATE",
+            1,
+            `Loaded baseline architecture for topic: ${formattedTitle}`
+          ),
+        ]);
+        if (reactFlowInstance) {
+          setTimeout(() => {
+            reactFlowInstance.fitView({ padding: 0.25, duration: 400 });
+          }, 100);
+        }
+      }
+      return;
+    }
+
     if (!problemSlug) return;
     const fetchProblem = async () => {
       try {
@@ -148,7 +282,7 @@ function SimulatorContent() {
       }
     };
     fetchProblem();
-  }, [problemSlug]);
+  }, [problemSlug, topicSlug, exerciseSlug, modeParam, activeExercise, reactFlowInstance]);
 
   // History for Undo / Redo
   const [history, setHistory] = useState<ArchitectureGraph[]>([INITIAL_YOUTUBE_GRAPH]);
@@ -164,7 +298,9 @@ function SimulatorContent() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
 
   // UI Panel Modes
-  const [activeTab, setActiveTab] = useState<SimulatorTab>("architecture");
+  const [activeTab, setActiveTab] = useState<SimulatorTab>(() =>
+    modeParam === "guided" && activeExercise ? "guide" : "architecture"
+  );
   const [showEventLog, setShowEventLog] = useState<boolean>(false);
   const [showValidationDrawer, setShowValidationDrawer] = useState<boolean>(false);
 
@@ -590,6 +726,76 @@ function SimulatorContent() {
       }
     },
     [commitGraphChange, graphState.metadata.version, reactFlowInstance, showToast]
+  );
+
+  const handleResetToExerciseStarter = useCallback(() => {
+    if (!activeExercise) return;
+    const starterGraph: ArchitectureGraph = {
+      ...activeExercise.initialGraph,
+      metadata: {
+        ...activeExercise.initialGraph.metadata,
+        version: (graphState.metadata.version || 1) + 1,
+        updatedAt: new Date().toISOString(),
+      },
+    };
+    commitGraphChange(
+      () => starterGraph,
+      "LOAD_TEMPLATE",
+      `Reset canvas to starter for ${activeExercise.title}`
+    );
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
+    showToast(`Reset to ${activeExercise.title} starter`);
+    if (reactFlowInstance) {
+      setTimeout(() => {
+        reactFlowInstance.fitView({ padding: 0.25, duration: 400 });
+      }, 80);
+    }
+  }, [activeExercise, commitGraphChange, graphState.metadata.version, reactFlowInstance, showToast]);
+
+  const handleExerciseCompleted = useCallback(
+    async (exerciseId: string) => {
+      showToast("Exercise Completed! All objectives satisfied.");
+      if (user && activeExercise) {
+        try {
+          const token =
+            useAuthStore.getState().accessToken ||
+            localStorage.getItem("dk_access_token");
+          if (token) {
+            // Resolve lesson UUID before calling completion endpoint
+            const lessonRes = await fetch(
+              `${API_BASE}/api/v1/lessons/${encodeURIComponent(activeExercise.slug)}`,
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              }
+            );
+            if (lessonRes.ok) {
+              const lessonData = await lessonRes.json();
+              if (lessonData?.id) {
+                await fetch(
+                  `${API_BASE}/api/v1/lessons/${encodeURIComponent(lessonData.id)}/complete`,
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({
+                      notes: `Completed guided exercise: ${activeExercise.title}`,
+                    }),
+                  }
+                );
+              }
+            }
+          }
+        } catch {
+          // Non-blocking fallback
+        }
+      }
+    },
+    [user, activeExercise, showToast]
   );
 
   const handleUpdateNodeConfig = useCallback(
@@ -1389,7 +1595,8 @@ function SimulatorContent() {
     Boolean(activeEdge) ||
     activeTab === "simulation" ||
     activeTab === "evaluation" ||
-    activeTab === "requirements";
+    activeTab === "requirements" ||
+    activeTab === "guide";
 
   return (
     <main id="main-content" tabIndex={-1} className="flex flex-col h-screen w-full overflow-hidden bg-surface-ground text-zinc-200 focus:outline-none">
@@ -1415,12 +1622,19 @@ function SimulatorContent() {
 
           <div className="h-4 w-[1px] bg-zinc-800 hidden sm:block" />
 
-          {/* Problem Indicator */}
+          {/* Problem / Topic Indicator */}
           <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-zinc-800 bg-zinc-900/60 text-xs">
-            <span className="text-zinc-500 text-[11px] hidden md:inline font-sans">Problem:</span>
-            <span className="font-semibold text-zinc-200 tracking-tight truncate max-w-[140px] sm:max-w-[180px]">
+            <span className="text-zinc-500 text-[11px] hidden md:inline font-sans">
+              {activeExercise ? "Guided Lab:" : topicSlug ? "Topic Lab:" : "Problem:"}
+            </span>
+            <span className="font-semibold text-zinc-200 tracking-tight truncate max-w-[140px] sm:max-w-[200px]">
               {graphState.metadata.title}
             </span>
+            {(activeExercise || topicSlug) && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-950/60 border border-sky-800 text-sky-400 font-mono hidden xl:inline">
+                {activeExercise ? "Guided" : "Curriculum"}
+              </span>
+            )}
           </div>
 
           {/* Unified Telemetry Health Badge */}
@@ -1454,6 +1668,19 @@ function SimulatorContent() {
 
         {/* ==================== ZONE 2: WORKFLOW STAGES (CENTER) ==================== */}
         <nav className="hidden md:flex items-center p-0.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs">
+          {activeExercise && (
+            <button
+              onClick={() => setActiveTab("guide")}
+              className={`px-3 py-1 rounded-md transition font-medium flex items-center gap-1.5 ${
+                activeTab === "guide"
+                  ? "bg-blue-600 text-white shadow-xs font-semibold"
+                  : "text-blue-400 hover:text-blue-200 border border-transparent"
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>Guided Lab</span>
+            </button>
+          )}
           <button
             onClick={() => setActiveTab("requirements")}
             className={`px-3 py-1 rounded-md transition font-medium ${
@@ -1503,6 +1730,19 @@ function SimulatorContent() {
 
         {/* Mobile View Toggle (Center) */}
         <div className="flex md:hidden items-center p-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs">
+          {activeExercise && (
+            <button
+              onClick={() => setActiveTab("guide")}
+              className={`min-h-[36px] px-2 py-1.5 rounded transition inline-flex items-center justify-center gap-1 ${
+                activeTab === "guide"
+                  ? "bg-blue-600 text-white font-medium"
+                  : "text-blue-400 hover:text-blue-200"
+              }`}
+            >
+              <BookOpen className="w-3 h-3" />
+              <span>Lab</span>
+            </button>
+          )}
           <button
             onClick={() => setActiveTab("architecture")}
             className={`min-h-[36px] px-2.5 py-1.5 rounded transition inline-flex items-center justify-center ${
@@ -1683,8 +1923,8 @@ function SimulatorContent() {
             {/* User Session Badge / Guest Sign-In */}
             {user ? (
               <Link
-                href="/progress"
-                title={`Logged in as ${user?.profile?.username || user?.email} — View telemetry`}
+                href="/learn"
+                title={`Logged in as ${user?.profile?.username || user?.email} — View curriculum`}
                 className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-zinc-800 bg-zinc-900 hover:bg-zinc-850 hover:border-zinc-700 text-xs font-mono text-zinc-300 transition"
               >
                 <User className="w-3 h-3 text-zinc-400" />
@@ -1705,6 +1945,49 @@ function SimulatorContent() {
           </div>
         </div>
       </header>
+
+      {/* Contextual Curriculum / Guided Lab Banner */}
+      {(topicSlug || activeExercise) && (
+        <div className="bg-sky-950/40 border-b border-sky-800/40 px-4 py-2 flex items-center justify-between text-xs text-sky-200 z-10 shrink-0 flex-wrap gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="px-2 py-0.5 rounded bg-blue-900/60 border border-blue-700/60 text-[10px] font-mono text-blue-300 uppercase tracking-wider font-semibold shrink-0">
+              {activeExercise ? "Guided Lab" : "Curriculum Lab"}
+            </span>
+            <span className="text-zinc-300 truncate">
+              {activeExercise ? (
+                <>
+                  <strong className="text-sky-200 font-medium mr-1.5">{activeExercise.title}:</strong>
+                  <span className="hidden sm:inline text-zinc-400">{activeExercise.subtitle}</span>
+                </>
+              ) : (
+                <>
+                  Interactive architecture session for topic:{" "}
+                  <strong className="text-sky-200 font-medium">{graphState.metadata.title}</strong>
+                </>
+              )}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0 text-xs">
+            {activeExercise && activeTab !== "guide" && (
+              <button
+                onClick={() => setActiveTab("guide")}
+                className="text-xs text-blue-400 hover:text-blue-300 font-mono flex items-center gap-1 transition font-medium"
+              >
+                <span>View Guided Steps</span>
+                <span aria-hidden="true">&rarr;</span>
+              </button>
+            )}
+            <Link
+              href={`/learn/${encodeURIComponent(activeExercise?.slug || topicSlug || "")}`}
+              className="text-xs text-sky-400 hover:text-sky-300 hover:underline font-mono flex items-center gap-1 transition"
+            >
+              <span>Return to Lesson</span>
+              <span aria-hidden="true">&rarr;</span>
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* ==================================================================== */}
       {/* 2. THREE-PANE MAIN WORKSPACE                                         */}
@@ -1735,6 +2018,26 @@ function SimulatorContent() {
             isDragOverCanvas ? "ring-2 ring-inset ring-blue-500/40 bg-zinc-950" : ""
           }`}
         >
+          {/* Floating Guided Exercise Helper Pill on Canvas */}
+          {activeExercise && activeTab === "architecture" && (
+            <div className="absolute top-4 left-4 z-20 animate-in fade-in duration-200">
+              <div className="px-3 py-2 rounded-lg bg-zinc-900/95 border border-blue-500/40 backdrop-blur-md shadow-xl flex items-center gap-3 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                  <span className="font-semibold text-zinc-100 font-mono text-[11px]">
+                    Lab: {activeExercise.title}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setActiveTab("guide")}
+                  className="px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-medium text-[10px] transition"
+                >
+                  Open Guide Tasks
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Visual Drop Overlay Hint */}
           {isDragOverCanvas && (
             <div className="absolute inset-0 z-30 pointer-events-none flex items-center justify-center bg-zinc-950/40 border-2 border-dashed border-blue-500/60 rounded-lg m-2">
@@ -1980,12 +2283,20 @@ function SimulatorContent() {
               ? "fixed inset-y-0 right-0 z-40 w-full sm:w-[420px] md:relative md:flex"
               : "hidden md:flex"
           } ${
-            activeTab === "simulation" || activeTab === "evaluation"
+            activeTab === "simulation" || activeTab === "evaluation" || activeTab === "guide"
               ? "md:w-80 lg:w-[410px]"
               : "md:w-72 lg:w-80"
           } border-l border-surface-border bg-surface-base flex-col shrink-0 shadow-2xl md:shadow-none transition-all duration-200`}
         >
-          {activeTab === "simulation" ? (
+          {activeTab === "guide" && activeExercise ? (
+            <SimulatorGuidedExercisePanel
+              exercise={activeExercise}
+              graphState={graphState}
+              setActiveTab={setActiveTab}
+              onResetToExerciseStarter={handleResetToExerciseStarter}
+              onExerciseCompleted={handleExerciseCompleted}
+            />
+          ) : activeTab === "simulation" ? (
             <SimulatorCockpitPanel
               simulationSubTab={simulationSubTab}
               setSimulationSubTab={setSimulationSubTab}

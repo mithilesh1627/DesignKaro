@@ -233,10 +233,10 @@ export default function LearnIndexPage() {
                 </Link>
 
                 <Link
-                  href="/practice"
+                  href="/simulator"
                   className="inline-flex items-center gap-2 rounded-md border border-zinc-700 bg-zinc-850 hover:bg-zinc-800 px-3.5 py-2 text-xs text-zinc-300 hover:text-white transition"
                 >
-                  <span>View Practice Problems</span>
+                  <span>Launch Simulator</span>
                 </Link>
               </div>
             </div>

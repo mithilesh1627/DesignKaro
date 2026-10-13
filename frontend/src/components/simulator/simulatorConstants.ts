@@ -11,13 +11,13 @@ import {
   Radio,
   HardDrive,
 } from "lucide-react";
-import {
+import type {
   ArchitectureComponentCategory,
   ArchitectureNodeConfig,
   ArchitectureGraph,
 } from "@/types/simulator";
 
-export type SimulatorTab = "architecture" | "requirements" | "simulation" | "evaluation";
+export type SimulatorTab = "architecture" | "requirements" | "guide" | "simulation" | "evaluation";
 
 // ============================================================================
 // COMPONENT LIBRARY DEFINITIONS
@@ -558,3 +558,292 @@ export const STARTER_TEMPLATES: Record<string, ArchitectureGraph> = {
     ],
   },
 };
+
+// ============================================================================
+// TOPIC-SPECIFIC ARCHITECTURE TOPOLOGIES (CURRICULUM HANDOFF)
+// ============================================================================
+
+export const CACHE_ASIDE_TOPOLOGY: ArchitectureGraph = {
+  metadata: {
+    problemId: "distributed-cache-redis",
+    title: "Cache-Aside Architecture (Redis)",
+    targetRps: "50K RPS",
+    version: 1,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  nodes: [
+    {
+      id: "client-1",
+      type: "client",
+      name: "Client Ingress",
+      category: "networking",
+      position: { x: 80, y: 220 },
+      config: { replicas: 1, qps_capacity: 50000, latency_ms: 1 },
+    },
+    {
+      id: "api_gateway-1",
+      type: "api_gateway",
+      name: "API Gateway",
+      category: "networking",
+      position: { x: 380, y: 220 },
+      config: { replicas: 3, qps_capacity: 45000, latency_ms: 2 },
+    },
+    {
+      id: "server-1",
+      type: "server",
+      name: "Application Service",
+      category: "compute",
+      position: { x: 700, y: 220 },
+      config: { replicas: 4, qps_capacity: 30000, latency_ms: 6, memory_gb: 32 },
+    },
+    {
+      id: "redis-1",
+      type: "redis",
+      name: "Redis Cache Cluster",
+      category: "cache",
+      position: { x: 1060, y: 120 },
+      config: { replicas: 3, qps_capacity: 60000, latency_ms: 1, memory_gb: 64, cache_policy: "LRU" },
+    },
+    {
+      id: "postgresql-1",
+      type: "postgresql",
+      name: "PostgreSQL Database",
+      category: "database",
+      position: { x: 1060, y: 320 },
+      config: { replicas: 2, qps_capacity: 10000, latency_ms: 12, storage_gb: 1000, read_capacity: 6000, write_capacity: 4000 },
+    },
+  ],
+  edges: [
+    { id: "e-c-gw", source: "client-1", target: "api_gateway-1", connectionType: "sync" },
+    { id: "e-gw-srv", source: "api_gateway-1", target: "server-1", connectionType: "sync" },
+    { id: "e-srv-redis", source: "server-1", target: "redis-1", connectionType: "read_path", label: "Cache Read" },
+    { id: "e-srv-db", source: "server-1", target: "postgresql-1", connectionType: "write_path", label: "Cache Miss / Write" },
+  ],
+};
+
+export const SHARDING_TOPOLOGY: ArchitectureGraph = {
+  metadata: {
+    problemId: "consistent-hashing-sharding",
+    title: "Consistent Hashing & Database Sharding",
+    targetRps: "75K RPS",
+    version: 1,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  nodes: [
+    {
+      id: "client-1",
+      type: "client",
+      name: "Client Ingress",
+      category: "networking",
+      position: { x: 80, y: 240 },
+      config: { replicas: 1, qps_capacity: 75000, latency_ms: 1 },
+    },
+    {
+      id: "server-1",
+      type: "server",
+      name: "Sharding Router Fleet",
+      category: "compute",
+      position: { x: 400, y: 240 },
+      config: { replicas: 4, qps_capacity: 70000, latency_ms: 3, memory_gb: 16 },
+    },
+    {
+      id: "postgresql-shard-0",
+      type: "postgresql",
+      name: "DB Shard 0 (Keys A-H)",
+      category: "database",
+      position: { x: 820, y: 80 },
+      config: { replicas: 2, qps_capacity: 25000, latency_ms: 8, storage_gb: 2000 },
+    },
+    {
+      id: "postgresql-shard-1",
+      type: "postgresql",
+      name: "DB Shard 1 (Keys I-P)",
+      category: "database",
+      position: { x: 820, y: 240 },
+      config: { replicas: 2, qps_capacity: 25000, latency_ms: 8, storage_gb: 2000 },
+    },
+    {
+      id: "postgresql-shard-2",
+      type: "postgresql",
+      name: "DB Shard 2 (Keys Q-Z)",
+      category: "database",
+      position: { x: 820, y: 400 },
+      config: { replicas: 2, qps_capacity: 25000, latency_ms: 8, storage_gb: 2000 },
+    },
+  ],
+  edges: [
+    { id: "e-c-srv", source: "client-1", target: "server-1", connectionType: "sync" },
+    { id: "e-srv-s0", source: "server-1", target: "postgresql-shard-0", connectionType: "sync", label: "Slot 0-5460" },
+    { id: "e-srv-s1", source: "server-1", target: "postgresql-shard-1", connectionType: "sync", label: "Slot 5461-10922" },
+    { id: "e-srv-s2", source: "server-1", target: "postgresql-shard-2", connectionType: "sync", label: "Slot 10923-16383" },
+  ],
+};
+
+export const EVENT_DRIVEN_TOPOLOGY: ArchitectureGraph = {
+  metadata: {
+    problemId: "kafka-event-streaming",
+    title: "Kafka Event-Driven Architecture",
+    targetRps: "50K RPS",
+    version: 1,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  nodes: [
+    {
+      id: "client-1",
+      type: "client",
+      name: "Event Publishers",
+      category: "networking",
+      position: { x: 80, y: 220 },
+      config: { replicas: 1, qps_capacity: 50000, latency_ms: 1 },
+    },
+    {
+      id: "server-1",
+      type: "server",
+      name: "Producer Ingress Service",
+      category: "compute",
+      position: { x: 380, y: 220 },
+      config: { replicas: 4, qps_capacity: 40000, latency_ms: 4 },
+    },
+    {
+      id: "kafka-1",
+      type: "kafka",
+      name: "Kafka Broker (12 Partitions)",
+      category: "messaging",
+      position: { x: 700, y: 220 },
+      config: { replicas: 3, qps_capacity: 50000, latency_ms: 2, partition_count: 12 },
+    },
+    {
+      id: "worker-1",
+      type: "worker",
+      name: "Consumer Worker Fleet",
+      category: "compute",
+      position: { x: 1020, y: 220 },
+      config: { replicas: 4, qps_capacity: 30000, latency_ms: 12 },
+    },
+    {
+      id: "postgresql-1",
+      type: "postgresql",
+      name: "Event Log Store (DB)",
+      category: "database",
+      position: { x: 1340, y: 220 },
+      config: { replicas: 2, qps_capacity: 15000, latency_ms: 10, storage_gb: 3000 },
+    },
+  ],
+  edges: [
+    { id: "e-c-srv", source: "client-1", target: "server-1", connectionType: "sync" },
+    { id: "e-srv-kafka", source: "server-1", target: "kafka-1", connectionType: "async", label: "Publish Events" },
+    { id: "e-kafka-worker", source: "kafka-1", target: "worker-1", connectionType: "async", label: "Consume Batch" },
+    { id: "e-worker-db", source: "worker-1", target: "postgresql-1", connectionType: "write_path", label: "Persist" },
+  ],
+};
+
+export const EDGE_ROUTING_TOPOLOGY: ArchitectureGraph = {
+  metadata: {
+    problemId: "api-gateway-envoy-routing",
+    title: "Edge Routing & Envoy Gateway Topology",
+    targetRps: "45K RPS",
+    version: 1,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  nodes: [
+    {
+      id: "client-1",
+      type: "client",
+      name: "Edge Clients",
+      category: "networking",
+      position: { x: 80, y: 240 },
+      config: { replicas: 1, qps_capacity: 50000, latency_ms: 1 },
+    },
+    {
+      id: "api_gateway-1",
+      type: "api_gateway",
+      name: "Envoy Edge Gateway",
+      category: "networking",
+      position: { x: 380, y: 240 },
+      config: { replicas: 3, qps_capacity: 45000, latency_ms: 2, rate_limit_rps: 30000 },
+    },
+    {
+      id: "microservice-auth",
+      type: "microservice",
+      name: "Auth Service",
+      category: "compute",
+      position: { x: 740, y: 90 },
+      config: { replicas: 3, qps_capacity: 20000, latency_ms: 4 },
+    },
+    {
+      id: "microservice-users",
+      type: "microservice",
+      name: "Users Service",
+      category: "compute",
+      position: { x: 740, y: 240 },
+      config: { replicas: 4, qps_capacity: 25000, latency_ms: 5 },
+    },
+    {
+      id: "microservice-orders",
+      type: "microservice",
+      name: "Orders Service",
+      category: "compute",
+      position: { x: 740, y: 390 },
+      config: { replicas: 3, qps_capacity: 15000, latency_ms: 7 },
+    },
+  ],
+  edges: [
+    { id: "e-c-gw", source: "client-1", target: "api_gateway-1", connectionType: "sync" },
+    { id: "e-gw-auth", source: "api_gateway-1", target: "microservice-auth", connectionType: "sync", label: "/api/v1/auth" },
+    { id: "e-gw-users", source: "api_gateway-1", target: "microservice-users", connectionType: "sync", label: "/api/v1/users" },
+    { id: "e-gw-orders", source: "api_gateway-1", target: "microservice-orders", connectionType: "sync", label: "/api/v1/orders" },
+  ],
+};
+
+export const TOPIC_STARTER_TEMPLATES: Record<string, ArchitectureGraph> = {
+  "distributed-cache-redis": CACHE_ASIDE_TOPOLOGY,
+  "consistent-hashing-sharding": SHARDING_TOPOLOGY,
+  "kafka-event-streaming": EVENT_DRIVEN_TOPOLOGY,
+  "api-gateway-envoy-routing": EDGE_ROUTING_TOPOLOGY,
+  "load-balancing-horizontal-scaling": EDGE_ROUTING_TOPOLOGY,
+};
+
+export function getStarterGraphForTopic(slug: string): ArchitectureGraph | null {
+  const normalized = slug.toLowerCase().trim();
+  if (
+    normalized === "distributed-cache-redis" ||
+    normalized === "distributed-caching" ||
+    normalized === "caching" ||
+    normalized === "cache" ||
+    normalized === "cache_aside"
+  ) {
+    return CACHE_ASIDE_TOPOLOGY;
+  }
+  if (
+    normalized === "consistent-hashing-sharding" ||
+    normalized === "database-sharding" ||
+    normalized === "sharding" ||
+    normalized === "consistent-hashing"
+  ) {
+    return SHARDING_TOPOLOGY;
+  }
+  if (
+    normalized === "kafka-event-streaming" ||
+    normalized === "event-streaming" ||
+    normalized === "kafka" ||
+    normalized === "event_driven"
+  ) {
+    return EVENT_DRIVEN_TOPOLOGY;
+  }
+  if (
+    normalized === "api-gateway-envoy-routing" ||
+    normalized === "load-balancing-horizontal-scaling" ||
+    normalized === "networking-routing" ||
+    normalized === "scalability" ||
+    normalized === "envoy" ||
+    normalized === "load-balancing"
+  ) {
+    return EDGE_ROUTING_TOPOLOGY;
+  }
+  return null;
+}
+

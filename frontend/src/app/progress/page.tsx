@@ -18,11 +18,14 @@ import {
   Lock,
   Layers,
   FileCode2,
+  Play,
 } from "lucide-react";
 import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
 import { AuthModal } from "@/components/AuthModal";
 import { useAuthStore } from "@/lib/authStore";
+import { useExerciseStore } from "@/lib/exerciseStore";
+import { GUIDED_EXERCISES } from "@/lib/guidedExercises";
 import { API_BASE } from "@/lib/api";
 
 interface SkillMastery {
@@ -85,6 +88,12 @@ interface KnowledgeItem {
 
 export default function ProgressPage() {
   const { accessToken, user } = useAuthStore();
+  const { progressByExerciseId } = useExerciseStore();
+  const guidedExercisesList = Object.values(GUIDED_EXERCISES);
+  const completedLabsCount = guidedExercisesList.filter(
+    (ex) => progressByExerciseId[ex.id]?.status === "completed"
+  ).length;
+
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -395,6 +404,101 @@ export default function ProgressPage() {
                 ))}
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Interactive Guided Architecture Labs Telemetry */}
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-5 sm:p-6 mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-3.5 mb-5">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <Play className="h-4 w-4 fill-current" />
+              </div>
+              <div>
+                <h2 className="text-xs font-semibold text-zinc-200">
+                  INTERACTIVE GUIDED ARCHITECTURE LABS
+                </h2>
+                <p className="text-[11px] text-zinc-400 mt-0.5">
+                  Hands-on workbench labs validated deterministically against live canvas topologies
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800">
+                {completedLabsCount} / {guidedExercisesList.length} Labs Mastered
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {guidedExercisesList.map((exercise) => {
+              const prog = progressByExerciseId[exercise.id] || {
+                status: "not_started",
+                completedTaskIds: [],
+              };
+              const isDone = prog.status === "completed";
+              const isInProgress = prog.status === "in_progress";
+              const completedCount = prog.completedTaskIds?.length || 0;
+              const totalCount = exercise.tasks.length;
+
+              return (
+                <div
+                  key={exercise.id}
+                  className={`p-4 rounded-md border transition-colors flex flex-col justify-between ${
+                    isDone
+                      ? "border-emerald-800/60 bg-emerald-950/15"
+                      : isInProgress
+                      ? "border-blue-800/60 bg-blue-950/15"
+                      : "border-zinc-800 bg-zinc-950/60"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="text-xs font-semibold text-zinc-200 truncate">
+                        {exercise.title}
+                      </span>
+                      <span
+                        className={`text-[10px] font-mono px-1.5 py-0.2 rounded border shrink-0 ${
+                          isDone
+                            ? "bg-emerald-950 text-emerald-400 border-emerald-800"
+                            : isInProgress
+                            ? "bg-blue-950 text-blue-400 border-blue-800"
+                            : "bg-zinc-800 text-zinc-400 border-zinc-700"
+                        }`}
+                      >
+                        {isDone ? "Completed" : isInProgress ? `${completedCount}/${totalCount} Steps` : "Not Started"}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-zinc-400 line-clamp-2 mb-3 leading-relaxed">
+                      {exercise.subtitle}
+                    </p>
+                  </div>
+
+                  <div className="pt-3 border-t border-zinc-800/80 flex items-center justify-between gap-2 text-xs">
+                    <Link
+                      href={`/learn/${encodeURIComponent(exercise.slug)}`}
+                      className="text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors"
+                    >
+                      Lesson
+                    </Link>
+                    <Link
+                      href={`/simulator?topic=${encodeURIComponent(exercise.slug)}&mode=guided`}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                        isDone
+                          ? "bg-emerald-600/80 hover:bg-emerald-600 text-white"
+                          : isInProgress
+                          ? "bg-blue-600 hover:bg-blue-500 text-white"
+                          : "bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700"
+                      }`}
+                    >
+                      <Play className="h-3 w-3 fill-current" />
+                      <span>{isDone ? "Review Lab" : isInProgress ? "Resume Lab" : "Launch Lab"}</span>
+                    </Link>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 

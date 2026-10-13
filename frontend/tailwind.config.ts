@@ -51,6 +51,7 @@ const config: Config = {
       },
       fontFamily: {
         sans: ["var(--font-sans)", '"Plus Jakarta Sans"', "system-ui", "sans-serif"],
+        serif: ["var(--font-fraunces)", "Fraunces", "Georgia", "serif"],
         display: ["var(--font-display)", "Outfit", "sans-serif"],
         mono: [
           "var(--font-mono)",
